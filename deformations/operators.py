@@ -2,10 +2,9 @@ from abc import ABC, abstractmethod
 import numpy as np
 import sage.all
 from sage.algebras.group_algebra import GroupAlgebra
-from sage.categories.lie_algebras import LieAlgebras
 from sage.combinat.all import CombinatorialFreeModule
-from sage.rings.polynomial.all import PolynomialRing
 from sage.groups.perm_gps.all import SymmetricGroup
+from sage.rings.polynomial.all import PolynomialRing
 
 
 def extend_linear(fn):
@@ -187,7 +186,7 @@ class GlobalBoostOp(GlobalOp):
     def boost(other):
         if isinstance(other, GlobalPermOp):
             return GlobalBoostOp(other)
-        elif isinstance(other.parent(), GlobalGLNAlgebra):
+        elif isinstance(other.parent(), CombinatorialFreeModule):
             return extend_linear(GlobalBoostOp)(other)
         else:
             raise NotImplementedError()
@@ -211,7 +210,6 @@ class GlobalBoostOp(GlobalOp):
             left_extended_sga = sga((left_extended + 1).tolist())
             lr = left_extended_sga * right_padded_sga
             rl = right_padded_sga * left_extended_sga
-
             # # this max() bit is really subtle: it has to do with the fact that
             # # if the left permutation starts before the right (which we've
             # # localized), we aren't actually acting at the site of that
@@ -280,79 +278,3 @@ class GlobalBilocalOp(GlobalOp):
 def operators_ordered(first, second):
     op_order = [GlobalBilocalOp, GlobalBoostOp, GlobalLengthOp, GlobalPermOp]
     return op_order.index(type(first)) <= op_order.index(type(second))
-
-
-class GlobalGLNAlgebra(CombinatorialFreeModule):
-    def __init__(self):
-        raw_ring = sage.all.QQbar
-        self.i_ = raw_ring.gen()
-        ring = PolynomialRing(raw_ring, "k")
-        category = LieAlgebras(ring)
-        super().__init__(ring, basis_keys=None, category=category)
-        self.print_options(sorting_key=lambda x: x.sort_order(), prefix="", bracket="")
-
-    def _repr_(self):
-        return "Global#Algebra"
-
-    def _element_constructor_(self, x):
-        """Convert x into an element of this algebra"""
-        if isinstance(x, GlobalOp):
-            return self.monomial(x)
-        elif isinstance(x, dict):
-            result = self.zero()
-            for op, coeff in x.items():
-                result += coeff * self(op)
-            return result
-        else:
-            return super()._element_constructor_(x)
-
-    def bracket(self, left_op, right_op):
-        """Compute the bracket of two basis elements"""
-        result = self(extend_bilinear(GlobalOp._bracket_)(left_op, right_op))
-        for op, coeff in result:
-            if coeff.degree() > 0:
-                breakpoint()
-            assert coeff.degree() == 0
-        return result
-
-    # this is a hack to make a.bracket(b) work
-    class Element(CombinatorialFreeModule.Element):
-        def _bracket_(self, right):
-            return self.parent().bracket(self, right)
-
-
-def main():
-    alg = GlobalGLNAlgebra()
-    i_ = alg.i_
-
-    test = GlobalPermOp([1, 3, 2])
-    print("Test permutation:", test)
-
-    def GPO(perm):
-        return alg(GlobalPermOp(perm))
-
-    boost = GlobalBoostOp.boost
-
-    hamiltonian = GPO([1]) - GPO([2, 1])
-    BQ2 = boost(hamiltonian)
-
-    charge_top = 5
-    charge_tower = [None, None, hamiltonian]
-    for k in range(2, charge_top):
-        charge_tower.append(BQ2.bracket(charge_tower[-1]) * -i_ / k)
-        print(f"Q_{k + 1}: 1/{k}*({k * charge_tower[k + 1]})")
-
-    Q = charge_tower
-
-    BQ3 = boost(Q[3])
-    deformation_top = 3
-    Q3_deformations = [None, None]
-    for k in range(2, deformation_top + 1):
-        Q3_deformations.append(i_ * BQ3.bracket(Q[k]))
-        print(f"i[B[Q3],Q{k}]: {Q3_deformations[k]}")
-
-    breakpoint()
-
-
-if __name__ == "__main__":
-    main()
