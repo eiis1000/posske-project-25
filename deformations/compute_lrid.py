@@ -288,8 +288,8 @@ class GlobalGLNAlgebra(CombinatorialFreeModule):
         self.i_ = raw_ring.gen()
         ring = PolynomialRing(raw_ring, "k")
         category = LieAlgebras(ring)
-        super().__init__(ring, basis_keys=None, category=category, prefix="e")
-        self.print_options(sorting_key=lambda x: x.sort_order())
+        super().__init__(ring, basis_keys=None, category=category)
+        self.print_options(sorting_key=lambda x: x.sort_order(), prefix="", bracket="")
 
     def _repr_(self):
         return "Global#Algebra"
