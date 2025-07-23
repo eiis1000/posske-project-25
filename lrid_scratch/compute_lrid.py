@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 import numpy as np
 import sage.all
-from sage.algebras.lie_algebras.lie_algebra import InfinitelyGeneratedLieAlgebra
 from sage.algebras.group_algebra import GroupAlgebra
 from sage.categories.lie_algebras import LieAlgebras
 from sage.combinat.all import CombinatorialFreeModule
@@ -10,27 +9,16 @@ from sage.groups.perm_gps.all import SymmetricGroup
 
 
 def extend_linear(fn):
-    # return (
-    #     lambda arg: fn(arg)
-    #     if not hasattr(arg, "__iter__")
-    #     else sum(coeff * arg.parent().monomial(fn(elem)) for elem, coeff in arg)
-    # )
-    def inner(left):
-        if not hasattr(left, "__iter__"):
-            return fn(left)
-        else:
-            accum = left.parent().zero()
-            for elem, coeff in left:
-                fn_elem = fn(elem)
-                accum += coeff * left.parent()(fn_elem)
-            return accum
-
-    return inner
+    return (
+        lambda arg: fn(arg)
+        if not hasattr(arg, "__iter__")
+        else sum(coeff * arg.parent()(fn(elem)) for elem, coeff in arg)
+    )
 
 
 def extend_bilinear(fn):
     xtl = extend_linear
-    return lambda left, right: xtl(lambda l: xtl(lambda r: fn(l, r))(right))(left)
+    return lambda left, right: xtl(lambda L: xtl(lambda R: fn(L, R))(right))(left)
 
 
 class GlobalOp(ABC):
@@ -61,13 +49,18 @@ class GlobalOp(ABC):
         pass
 
     def _bracket_(self, other):
-        if not isinstance(other, GlobalOp):
-            breakpoint()
         assert isinstance(other, GlobalOp)
         if other.hardness() > self.hardness():
             return {k: -v for k, v in other.bracket_ordered(self).items()}
         else:
             return self.bracket_ordered(other)
+
+    def sort_order(self):
+        return (-self.hardness(), *self.selfsort_tuple())
+
+    @abstractmethod
+    def selfsort_tuple(self):
+        pass
 
 
 class GlobalLengthOp(GlobalOp):
@@ -83,10 +76,13 @@ class GlobalLengthOp(GlobalOp):
     def bracket_ordered(self, other):
         raise NotImplementedError()
 
+    def selfsort_tuple(self):
+        return tuple()
 
-class GlobalPermutationOp(GlobalOp):
+
+class GlobalPermOp(GlobalOp):
     def __init__(self, perm):
-        self.data = GlobalPermutationOp.reduce_permutation(perm)
+        self.data, _ = GlobalPermOp.reduce_permutation(perm)
 
     def __repr__(self):
         return f"{(self.data + 1).tolist()}".replace(" ", "")
@@ -95,29 +91,30 @@ class GlobalPermutationOp(GlobalOp):
         return 1
 
     def bracket_ordered(self, other):
-        assert isinstance(other, GlobalPermutationOp)
-        return GlobalPermutationOp.bracket_perm_perm(self, other)
+        assert isinstance(other, GlobalPermOp)
+        return GlobalPermOp.bracket_perm_perm(self, other)
 
     @staticmethod
     def check_valid_permutation(perm):
-        assert isinstance(perm, list) and all(isinstance(x, int) for x in perm)
-        perm = np.array(perm, dtype=int)
-        assert np.all(perm >= 1)
-        assert np.all(perm <= len(perm))
+        assert np.all(perm >= 0)
+        assert np.all(perm < len(perm))
         assert len(perm) == len(set(perm))
 
     @staticmethod
     def reduce_permutation(perm):
-        GlobalPermutationOp.check_valid_permutation(perm)
-        perm = np.array(perm, dtype=int)
-        perm -= 1  # Convert to zero-based indexing
+        if not isinstance(perm, np.ndarray):
+            assert isinstance(perm, list) and all(isinstance(x, int) for x in perm)
+            perm = np.array(perm, dtype=int)
+            perm -= 1  # Convert to zero-based indexing
+        GlobalPermOp.check_valid_permutation(perm)
         nontrivial_indices = np.where(perm != np.arange(len(perm)))[0]
         if len(nontrivial_indices) == 0:
-            return np.array([0], dtype=int)
-        perm = perm[nontrivial_indices.min() : nontrivial_indices.max() + 1]
-        perm -= perm.min()
-        GlobalPermutationOp.check_valid_permutation((perm + 1).tolist())
-        return perm
+            return np.array([0], dtype=int), None
+        offset, end = nontrivial_indices.min(), nontrivial_indices.max()
+        perm = perm[offset : end + 1]
+        perm -= offset
+        GlobalPermOp.check_valid_permutation(perm)
+        return perm, offset
 
     @staticmethod
     def pad_permutation(perm, padding):
@@ -129,7 +126,7 @@ class GlobalPermutationOp(GlobalOp):
     def bracket_perm_perm(left, right):
         left_perm, right_perm = left.data, right.data
         padding = len(left_perm) + 1
-        right_padded = GlobalPermutationOp.pad_permutation(right_perm, padding)
+        right_padded = GlobalPermOp.pad_permutation(right_perm, padding)
         full_size = len(right_padded)
         symmetric_group = SymmetricGroup(full_size)
         sga = GroupAlgebra(symmetric_group, sage.all.ZZ)
@@ -148,18 +145,32 @@ class GlobalPermutationOp(GlobalOp):
         for sg_el, coeff in accum:
             assert coeff != 0
             perm = list(sg_el.tuple())
-            perm_promoted = GlobalPermutationOp(perm)
+            perm_promoted = GlobalPermOp(perm)
             pre_coeff = final_dict.get(perm_promoted, 0)
             final_dict[perm_promoted] = pre_coeff + coeff
 
         return final_dict
 
+    def selfsort_tuple(self):
+        return (len(self.data), self.data.tolist())
+
+    def vacuum_ev(self):
+        # Needed for the boost identification formulation of Eq. (3.20)
+        return 1
+        # # originally I thought this was the sign, but no, according to
+        # # the footnote on page 13 it's just 1. old sign impl is below.
+        # even = True
+        # # brute-force n^2, could use merge sort if I really wanted to
+        # for i in range(len(self.data)):
+        #     for j in range(i + 1, len(self.data)):
+        #         if self.data[i] > self.data[j]:
+        #             even = not even
+        # return 1 if even else -1
+
 
 class GlobalBoostOp(GlobalOp):
     def __init__(self, child):
-        if not isinstance(child, GlobalPermutationOp):
-            breakpoint()
-        assert isinstance(child, GlobalPermutationOp)
+        assert isinstance(child, GlobalPermOp)
         self.data = child
 
     def __repr__(self):
@@ -169,14 +180,14 @@ class GlobalBoostOp(GlobalOp):
         return 10
 
     def bracket_ordered(self, other):
-        assert isinstance(other, GlobalPermutationOp)
+        assert isinstance(other, GlobalPermOp)
         return GlobalBoostOp.bracket_boost_perm(self, other)
 
     @staticmethod
     def boost(other):
-        if isinstance(other, GlobalPermutationOp):
+        if isinstance(other, GlobalPermOp):
             return GlobalBoostOp(other)
-        elif isinstance(other.parent(), GlobalAlgebra):
+        elif isinstance(other.parent(), GlobalGLNAlgebra):
             return extend_linear(GlobalBoostOp)(other)
         else:
             raise NotImplementedError()
@@ -184,10 +195,10 @@ class GlobalBoostOp(GlobalOp):
     @staticmethod
     def bracket_boost_perm(left, right):
         Kpoly = PolynomialRing(sage.all.ZZ, "k")
-        localization_offset = Kpoly.gen()
+        origin_offset = Kpoly.gen()
         left_perm, right_perm = left.data.data, right.data
         padding = len(left_perm) + 1
-        right_padded = GlobalPermutationOp.pad_permutation(right_perm, padding)
+        right_padded = GlobalPermOp.pad_permutation(right_perm, padding)
         full_size = len(right_padded)
         symmetric_group = SymmetricGroup(full_size)
         sga = GroupAlgebra(symmetric_group, Kpoly)
@@ -200,29 +211,56 @@ class GlobalBoostOp(GlobalOp):
             left_extended_sga = sga((left_extended + 1).tolist())
             lr = left_extended_sga * right_padded_sga
             rl = right_padded_sga * left_extended_sga
-            # this max() bit is really subtle: it has to do with the fact that
-            # if the left permutation starts before the right (which we've
-            # localized), we aren't actually acting at the site of that
-            # localized right permutation, so we need to think about which
-            # site we're actually acting on and use the appropriate shift.
-            # also, since the localization offset is arbitrary, I think we
-            # could have done max(i, padding) instead, but we're doing it this
-            # way to more directly reflect the choice of spin chain origin.
-            accum += (localization_offset + max(i - padding, 0)) * (lr - rl)
+
+            # # this max() bit is really subtle: it has to do with the fact that
+            # # if the left permutation starts before the right (which we've
+            # # localized), we aren't actually acting at the site of that
+            # # localized right permutation, so we need to think about which
+            # # site we're actually acting on and use the appropriate shift.
+            # # also, since the origin offset is arbitrary, I think we
+            # # could have done max(i, padding) instead, but we're doing it this
+            # # way to more directly reflect the choice of spin chain origin.
+            # accum += (origin_offset + max(i - padding, 0)) * (lr - rl)
+            # ACTUALLY, we'll do something else instead; see the comment in
+            # the final loop for more details.
+            accum += (origin_offset + i) * (lr - rl)
 
         final_dict = {}
+        identity_multiple = 0
         for sg_el, coeff in accum:
-            assert coeff != 0
             perm = list(sg_el.tuple())
-            perm_promoted = GlobalPermutationOp(perm)
+            perm_reduced, perm_offset = GlobalPermOp.reduce_permutation(perm)
+            perm_promoted = GlobalPermOp(perm_reduced)
             pre_coeff = final_dict.get(perm_promoted, 0)
-            final_dict[perm_promoted] = pre_coeff + coeff
+
+            # this perm_offset chicanery is very very subtle: I think that it's
+            # a valid alternative to combining the max(i - padding) idea from
+            # above with the identification relations (3.20) in the paper, and
+            # empirically it's worked so far. the idea is that we essentially
+            # force every single permutation in the boost (i.e. which has a
+            # linear coefficient of origin_offset) to be shifted by the actual
+            # offset of the permutation; this should be intuitively clear.
+            final_dict[perm_promoted] = pre_coeff + coeff.subs(
+                origin_offset - perm_offset
+            )
+            # we need to subtract the corresponding factors of the identity to
+            # reproduce the results of the paper a la Eq. (3.20).
+            identity_multiple += (
+                perm_promoted.vacuum_ev() * perm_offset * coeff.coefficient(1)
+            )
+
+        final_dict[GlobalPermOp([1])] = identity_multiple
 
         return final_dict
+
+    def selfsort_tuple(self):
+        return (*self.data.sort_order(),)
 
 
 class GlobalBilocalOp(GlobalOp):
     def __init__(self, left, right):
+        assert isinstance(left, GlobalPermOp)
+        assert isinstance(right, GlobalPermOp)
         self.data = (left, right)
 
     def __repr__(self):
@@ -235,19 +273,23 @@ class GlobalBilocalOp(GlobalOp):
     def bracket_ordered(self, other):
         raise NotImplementedError()
 
+    def selfsort_tuple(self):
+        return (*self.data[0].sort_order(), *self.data[1].sort_order())
+
 
 def operators_ordered(first, second):
-    op_order = [GlobalBilocalOp, GlobalBoostOp, GlobalLengthOp, GlobalPermutationOp]
+    op_order = [GlobalBilocalOp, GlobalBoostOp, GlobalLengthOp, GlobalPermOp]
     return op_order.index(type(first)) <= op_order.index(type(second))
 
 
-class GlobalAlgebra(CombinatorialFreeModule):
+class GlobalGLNAlgebra(CombinatorialFreeModule):
     def __init__(self):
         raw_ring = sage.all.QQbar
         self.i_ = raw_ring.gen()
         ring = PolynomialRing(raw_ring, "k")
         category = LieAlgebras(ring)
         super().__init__(ring, basis_keys=None, category=category, prefix="e")
+        self.print_options(sorting_key=lambda x: x.sort_order())
 
     def _repr_(self):
         return "Global#Algebra"
@@ -273,35 +315,44 @@ class GlobalAlgebra(CombinatorialFreeModule):
             assert coeff.degree() == 0
         return result
 
+    # this is a hack to make a.bracket(b) work
+    class Element(CombinatorialFreeModule.Element):
+        def _bracket_(self, right):
+            return self.parent().bracket(self, right)
 
-def do_the_thing():
-    global_algebra = GlobalAlgebra()
-    i_ = global_algebra.i_
 
-    test = GlobalPermutationOp([1, 3, 2])
+def main():
+    alg = GlobalGLNAlgebra()
+    i_ = alg.i_
+
+    test = GlobalPermOp([1, 3, 2])
     print("Test permutation:", test)
 
     def GPO(perm):
-        return global_algebra(GlobalPermutationOp(perm))
+        return alg(GlobalPermOp(perm))
 
-    Q2 = GPO([1]) - GPO([2, 1])
-    BQ2 = GlobalBoostOp.boost(Q2)
+    boost = GlobalBoostOp.boost
 
-    print("Q2:", Q2)
-    print("BQ2:", BQ2)
-    print("[Q2, Q2]:", global_algebra.bracket(Q2, Q2))
-    print("[BQ2, Q2]:", global_algebra.bracket(BQ2, Q2))
+    hamiltonian = GPO([1]) - GPO([2, 1])
+    BQ2 = boost(hamiltonian)
 
     charge_top = 5
-    charge_stack = [None, None, Q2]
+    charge_tower = [None, None, hamiltonian]
     for k in range(2, charge_top):
-        charge_stack.append(global_algebra.bracket(BQ2, charge_stack[-1]) * -i_ / k)
-        print(f"Q{k + 1}:", charge_stack[-1])
+        charge_tower.append(BQ2.bracket(charge_tower[-1]) * -i_ / k)
+        print(f"Q_{k + 1}: 1/{k}*({k * charge_tower[k + 1]})")
+
+    Q = charge_tower
+
+    BQ3 = boost(Q[3])
+    deformation_top = 3
+    Q3_deformations = [None, None]
+    for k in range(2, deformation_top + 1):
+        Q3_deformations.append(i_ * BQ3.bracket(Q[k]))
+        print(f"i[B[Q3],Q{k}]: {Q3_deformations[k]}")
 
     breakpoint()
 
 
 if __name__ == "__main__":
-    print("starting main")
-    do_the_thing()
-    print("finished main")
+    main()
