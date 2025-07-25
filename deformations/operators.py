@@ -62,26 +62,9 @@ class GlobalOp(ABC):
         pass
 
 
-class GlobalLengthOp(GlobalOp):
-    def __init__(self):
-        self.data = None
-
-    def __repr__(self):
-        return "N"
-
-    def hardness(self):
-        return 15
-
-    def bracket_ordered(self, other):
-        raise NotImplementedError()
-
-    def selfsort_tuple(self):
-        return tuple()
-
-
 class GlobalPermOp(GlobalOp):
     def __init__(self, perm):
-        self.data, _ = GlobalPermOp.reduce_permutation(perm)
+        self.data, *_ = GlobalPermOp.reduce_permutation(perm)
 
     def __repr__(self):
         return f"{(self.data + 1).tolist()}".replace(" ", "")
@@ -104,16 +87,16 @@ class GlobalPermOp(GlobalOp):
         if not isinstance(perm, np.ndarray):
             assert isinstance(perm, list) and all(isinstance(x, int) for x in perm)
             perm = np.array(perm, dtype=int)
-            perm -= 1  # Convert to zero-based indexing
+            perm -= 1  # lists will be 1-indexed, arrays 0-indexed
         GlobalPermOp.check_valid_permutation(perm)
         nontrivial_indices = np.where(perm != np.arange(len(perm)))[0]
         if len(nontrivial_indices) == 0:
             return np.array([0], dtype=int), None
-        offset, end = nontrivial_indices.min(), nontrivial_indices.max()
-        perm = perm[offset : end + 1]
-        perm -= offset
-        GlobalPermOp.check_valid_permutation(perm)
-        return perm, offset
+        offset, end = nontrivial_indices.min(), nontrivial_indices.max() + 1
+        reduced = perm[offset:end]
+        reduced -= offset
+        GlobalPermOp.check_valid_permutation(reduced)
+        return reduced, (offset, len(perm) - end)
 
     @staticmethod
     def pad_permutation(perm, padding):
@@ -227,7 +210,8 @@ class GlobalBoostOp(GlobalOp):
         identity_multiple = 0
         for sg_el, coeff in accum:
             perm = list(sg_el.tuple())
-            perm_reduced, perm_offset = GlobalPermOp.reduce_permutation(perm)
+            perm_reduced, legs = GlobalPermOp.reduce_permutation(perm)
+            left_legs, right_legs = legs
             perm_promoted = GlobalPermOp(perm_reduced)
             pre_coeff = final_dict.get(perm_promoted, 0)
 
@@ -238,13 +222,16 @@ class GlobalBoostOp(GlobalOp):
             # force every single permutation in the boost (i.e. which has a
             # linear coefficient of origin_offset) to be shifted by the actual
             # offset of the permutation; this should be intuitively clear.
+            # similarly, one can view this as implementing the spectator leg
+            # relations in (3.19) directly.
             final_dict[perm_promoted] = pre_coeff + coeff.subs(
-                origin_offset - perm_offset
+                origin_offset - left_legs
             )
             # we need to subtract the corresponding factors of the identity to
-            # reproduce the results of the paper a la Eq. (3.20).
-            identity_multiple += (
-                perm_promoted.vacuum_ev() * perm_offset * coeff.coefficient(1)
+            # compensate for the right-side spectator legs; again, this can be
+            # viewed as implementing (3.19) directly.
+            identity_multiple -= (
+                perm_promoted.vacuum_ev() * right_legs * coeff.coefficient(1)
             )
 
         final_dict[GlobalPermOp([1])] = identity_multiple
@@ -273,8 +260,3 @@ class GlobalBilocalOp(GlobalOp):
 
     def selfsort_tuple(self):
         return (*self.data[0].sort_order(), *self.data[1].sort_order())
-
-
-def operators_ordered(first, second):
-    op_order = [GlobalBilocalOp, GlobalBoostOp, GlobalLengthOp, GlobalPermOp]
-    return op_order.index(type(first)) <= op_order.index(type(second))
