@@ -1,70 +1,29 @@
-from abc import ABC, abstractmethod
+from ..algebra import GlobalOp
+from ..tools import extend_linear
+
 import numpy as np
-import sage.all
-from sage.algebras.group_algebra import GroupAlgebra
-from sage.combinat.all import CombinatorialFreeModule
-from sage.groups.perm_gps.all import SymmetricGroup
-from sage.rings.polynomial.all import PolynomialRing
+import sage.all as sa
 
 
-def extend_linear(fn):
-    return (
-        lambda arg: fn(arg)
-        if not hasattr(arg, "__iter__")
-        else sum(coeff * arg.parent()(fn(elem)) for elem, coeff in arg)
-    )
+def make_gln(target):
+    # for convenience
+    if isinstance(target, list):
+        return GLNHomogOp(target)
+    elif isinstance(target, set):
+        assert len(target) == 1
+        l = target.pop()
+        assert isinstance(l, list)
+        return GLNBoostOp(GLNHomogOp(l))
+    elif isinstance(target, tuple):
+        assert len(target) == 2
+        l, r = target
+        assert isinstance(l, list) and isinstance(r, list)
+        return GLNBilocalOp(GLNHomogOp(l), GLNHomogOp(r))
 
 
-def extend_bilinear(fn):
-    xtl = extend_linear
-    return lambda left, right: xtl(lambda L: xtl(lambda R: fn(L, R))(right))(left)
-
-
-class GlobalOp(ABC):
-    def __hash__(self):
-        if isinstance(self.data, np.ndarray):
-            return hash((tuple(self.data), type(self)))
-        return hash((self.data, type(self)))
-
-    def __eq__(self, other):
-        if not isinstance(other, type(self)):
-            return False
-        if isinstance(self.data, np.ndarray) and isinstance(other.data, np.ndarray):
-            return np.array_equal(self.data, other.data)
-        elif isinstance(self.data, np.ndarray) or isinstance(other.data, np.ndarray):
-            return False
-        return self.data == other.data
-
-    @abstractmethod
-    def __repr__(self):
-        pass
-
-    @abstractmethod
-    def hardness(self):
-        pass
-
-    @abstractmethod
-    def bracket_ordered(self, other):
-        pass
-
-    def _bracket_(self, other):
-        assert isinstance(other, GlobalOp)
-        if other.hardness() > self.hardness():
-            return {k: -v for k, v in other.bracket_ordered(self).items()}
-        else:
-            return self.bracket_ordered(other)
-
-    def sort_order(self):
-        return (-self.hardness(), *self.selfsort_tuple())
-
-    @abstractmethod
-    def selfsort_tuple(self):
-        pass
-
-
-class GlobalPermOp(GlobalOp):
+class GLNHomogOp(GlobalOp):
     def __init__(self, perm):
-        self.data, *_ = GlobalPermOp.reduce_permutation(perm)
+        self.data, *_ = self.reduce_permutation(perm)
 
     def __repr__(self):
         return f"{(self.data + 1).tolist()}".replace(" ", "")
@@ -73,8 +32,8 @@ class GlobalPermOp(GlobalOp):
         return 1
 
     def bracket_ordered(self, other):
-        assert isinstance(other, GlobalPermOp)
-        return GlobalPermOp.bracket_perm_perm(self, other)
+        assert isinstance(other, GLNHomogOp)
+        return GLNHomogOp.bracket_perm_perm(self, other)
 
     @staticmethod
     def check_valid_permutation(perm):
@@ -88,14 +47,14 @@ class GlobalPermOp(GlobalOp):
             assert isinstance(perm, list) and all(isinstance(x, int) for x in perm)
             perm = np.array(perm, dtype=int)
             perm -= 1  # lists will be 1-indexed, arrays 0-indexed
-        GlobalPermOp.check_valid_permutation(perm)
+        GLNHomogOp.check_valid_permutation(perm)
         nontrivial_indices = np.where(perm != np.arange(len(perm)))[0]
         if len(nontrivial_indices) == 0:
             return np.array([0], dtype=int), None
         offset, end = nontrivial_indices.min(), nontrivial_indices.max() + 1
         reduced = perm[offset:end]
         reduced -= offset
-        GlobalPermOp.check_valid_permutation(reduced)
+        GLNHomogOp.check_valid_permutation(reduced)
         return reduced, (offset, len(perm) - end)
 
     @staticmethod
@@ -108,10 +67,10 @@ class GlobalPermOp(GlobalOp):
     def bracket_perm_perm(left, right):
         left_perm, right_perm = left.data, right.data
         padding = len(left_perm) + 1
-        right_padded = GlobalPermOp.pad_permutation(right_perm, padding)
+        right_padded = GLNHomogOp.pad_permutation(right_perm, padding)
         full_size = len(right_padded)
-        symmetric_group = SymmetricGroup(full_size)
-        sga = GroupAlgebra(symmetric_group, sage.all.ZZ)
+        symmetric_group = sa.SymmetricGroup(full_size)
+        sga = sa.GroupAlgebra(symmetric_group, sa.ZZ)
 
         accum = sga.zero()
         right_padded_sga = sga((right_padded + 1).tolist())
@@ -127,7 +86,7 @@ class GlobalPermOp(GlobalOp):
         for sg_el, coeff in accum:
             assert coeff != 0
             perm = list(sg_el.tuple())
-            perm_promoted = GlobalPermOp(perm)
+            perm_promoted = GLNHomogOp(perm)
             pre_coeff = final_dict.get(perm_promoted, 0)
             final_dict[perm_promoted] = pre_coeff + coeff
 
@@ -150,9 +109,9 @@ class GlobalPermOp(GlobalOp):
         # return 1 if even else -1
 
 
-class GlobalBoostOp(GlobalOp):
+class GLNBoostOp(GlobalOp):
     def __init__(self, child):
-        assert isinstance(child, GlobalPermOp)
+        assert isinstance(child, GLNHomogOp)
         self.data = child
 
     def __repr__(self):
@@ -162,28 +121,28 @@ class GlobalBoostOp(GlobalOp):
         return 10
 
     def bracket_ordered(self, other):
-        assert isinstance(other, GlobalPermOp)
-        return GlobalBoostOp.bracket_boost_perm(self, other)
+        assert isinstance(other, GLNHomogOp)
+        return GLNBoostOp.bracket_boost_perm(self, other)
 
     @staticmethod
     def boost(other):
-        if isinstance(other, GlobalPermOp):
-            return GlobalBoostOp(other)
-        elif isinstance(other.parent(), CombinatorialFreeModule):
-            return extend_linear(GlobalBoostOp)(other)
+        if isinstance(other, GLNHomogOp):
+            return GLNBoostOp(other)
+        elif isinstance(other.parent(), sa.CombinatorialFreeModule):
+            return extend_linear(GLNBoostOp)(other)
         else:
             raise NotImplementedError()
 
     @staticmethod
     def bracket_boost_perm(left, right):
-        Kpoly = PolynomialRing(sage.all.ZZ, "k")
+        Kpoly = sa.PolynomialRing(sa.ZZ, "k")
         origin_offset = Kpoly.gen()
         left_perm, right_perm = left.data.data, right.data
         padding = len(left_perm) + 1
-        right_padded = GlobalPermOp.pad_permutation(right_perm, padding)
+        right_padded = GLNHomogOp.pad_permutation(right_perm, padding)
         full_size = len(right_padded)
-        symmetric_group = SymmetricGroup(full_size)
-        sga = GroupAlgebra(symmetric_group, Kpoly)
+        symmetric_group = sa.SymmetricGroup(full_size)
+        sga = sa.GroupAlgebra(symmetric_group, Kpoly)
 
         accum = sga.zero()
         right_padded_sga = sga((right_padded + 1).tolist())
@@ -210,9 +169,9 @@ class GlobalBoostOp(GlobalOp):
         identity_multiple = 0
         for sg_el, coeff in accum:
             perm = list(sg_el.tuple())
-            perm_reduced, legs = GlobalPermOp.reduce_permutation(perm)
+            perm_reduced, legs = GLNHomogOp.reduce_permutation(perm)
             left_legs, right_legs = legs
-            perm_promoted = GlobalPermOp(perm_reduced)
+            perm_promoted = GLNHomogOp(perm_reduced)
             pre_coeff = final_dict.get(perm_promoted, 0)
 
             # this perm_offset chicanery is very very subtle: I think that it's
@@ -234,7 +193,7 @@ class GlobalBoostOp(GlobalOp):
                 perm_promoted.vacuum_ev() * right_legs * coeff.coefficient(1)
             )
 
-        final_dict[GlobalPermOp([1])] = identity_multiple
+        final_dict[GLNHomogOp([1])] = identity_multiple
 
         return final_dict
 
@@ -242,10 +201,9 @@ class GlobalBoostOp(GlobalOp):
         return (*self.data.sort_order(),)
 
 
-class GlobalBilocalOp(GlobalOp):
+class GLNBilocalOp(GlobalOp):
     def __init__(self, left, right):
-        assert isinstance(left, GlobalPermOp)
-        assert isinstance(right, GlobalPermOp)
+        assert isinstance(left, GLNHomogOp) and isinstance(right, GLNHomogOp)
         self.data = (left, right)
 
     def __repr__(self):

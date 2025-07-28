@@ -1,23 +1,18 @@
-from .algebra import GlobalGLNAlgebra
+from .algebra import GlobalAlgebra
 from .charges import ShortRangeChain
-from .operators import (
-    GlobalPermOp,
-    GlobalBoostOp,
-)
+from .operators.gln import make_gln, GLNBoostOp
+import sage.all as sa  # keep for interactive
 
 
 def main():
-    alg = GlobalGLNAlgebra()
-    i_ = alg.i_
+    alg = GlobalAlgebra(GLNBoostOp.boost, make=make_gln)
+    i_ = alg.i_  # keep for interactive
 
     # test = GlobalPermOp([1, 3, 2])
     # print("Test permutation:", test)
 
-    def GPO(perm):
-        return alg(GlobalPermOp(perm))
-
-    hamiltonian = GPO([1]) - GPO([2, 1])
-    chain = ShortRangeChain(hamiltonian, GlobalBoostOp.boost, logging=True)
+    hamiltonian = alg.make([1]) - alg.make([2, 1])
+    chain = ShortRangeChain(hamiltonian, logging=True)
     chain.ensure_filled(6)
 
     deformation_top = 5

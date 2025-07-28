@@ -1,20 +1,61 @@
-import sage.all
-from sage.categories.lie_algebras import LieAlgebras
-from sage.combinat.all import CombinatorialFreeModule
-from sage.rings.polynomial.all import PolynomialRing
+from abc import ABC, abstractmethod
+import numpy as np
+import sage.all as sa
 
-from .operators import (
-    GlobalOp,
-    extend_bilinear,
-)
+from .tools import extend_bilinear
 
 
-class GlobalGLNAlgebra(CombinatorialFreeModule):
-    def __init__(self):
-        raw_ring = sage.all.QQbar
+class GlobalOp(ABC):
+    def __hash__(self):
+        if isinstance(self.data, np.ndarray):
+            return hash((tuple(self.data), type(self)))
+        return hash((self.data, type(self)))
+
+    def __eq__(self, other):
+        if not isinstance(other, type(self)):
+            return False
+        if isinstance(self.data, np.ndarray) and isinstance(other.data, np.ndarray):
+            return np.array_equal(self.data, other.data)
+        elif isinstance(self.data, np.ndarray) or isinstance(other.data, np.ndarray):
+            return False
+        return self.data == other.data
+
+    @abstractmethod
+    def __repr__(self):
+        pass
+
+    @abstractmethod
+    def hardness(self):
+        pass
+
+    @abstractmethod
+    def bracket_ordered(self, other):
+        pass
+
+    def _bracket_(self, other):
+        assert isinstance(other, GlobalOp)
+        if other.hardness() > self.hardness():
+            return {k: -v for k, v in other.bracket_ordered(self).items()}
+        else:
+            return self.bracket_ordered(other)
+
+    def sort_order(self):
+        return (-self.hardness(), *self.selfsort_tuple())
+
+    @abstractmethod
+    def selfsort_tuple(self):
+        pass
+
+
+class GlobalAlgebra(sa.CombinatorialFreeModule):
+    def __init__(self, boost, make=None):
+        self.boost_ = boost
+        self.boost = lambda x: self(boost(x))
+        self.make = lambda x: self(make(x))  # for convenience
+        raw_ring = sa.QQbar
         self.i_ = raw_ring.gen()
-        ring = PolynomialRing(raw_ring, "k")
-        category = LieAlgebras(ring)
+        ring = sa.PolynomialRing(raw_ring, "k")
+        category = sa.LieAlgebras(ring)
         super().__init__(ring, basis_keys=None, category=category)
         self.print_options(sorting_key=lambda x: x.sort_order(), prefix="", bracket="")
 
@@ -43,6 +84,6 @@ class GlobalGLNAlgebra(CombinatorialFreeModule):
         return result
 
     # this is a hack to make a.bracket(b) work
-    class Element(CombinatorialFreeModule.Element):
+    class Element(sa.CombinatorialFreeModule.Element):
         def _bracket_(self, right):
             return self.parent().bracket(self, right)

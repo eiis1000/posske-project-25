@@ -1,14 +1,13 @@
-import sage.all
+import sage.all as sa
 
 
 class ShortRangeChain:
-    def __init__(self, hamiltonian, boost_fn, logging=False):
+    def __init__(self, hamiltonian, logging=False):
         self.hamiltonian = hamiltonian
-        self.boost_fn = boost_fn
         self.algebra = hamiltonian.parent()
         self.i_ = self.algebra.i_
         self.charge_tower = [None, None, hamiltonian]
-        self.boost_tower = [None, None, boost_fn(hamiltonian)]
+        self.boost_tower = [None, None, self.algebra.boost(hamiltonian)]
         self.logging = logging
 
     def Q(self, k):
@@ -29,7 +28,7 @@ class ShortRangeChain:
         self.ensure_filled(k - 1)
         BQ2_bracket_Qtop = self.boost_tower[2].bracket(self.charge_tower[k - 1])
         self.charge_tower.append(BQ2_bracket_Qtop * -self.i_ / (k - 1))
-        self.boost_tower.append(self.boost_fn(self.charge_tower[k]))
+        self.boost_tower.append(self.algebra.boost(self.charge_tower[k]))
         if self.logging:
             print(f"Q_{k}: {self.charge_tower[k]}")
 
