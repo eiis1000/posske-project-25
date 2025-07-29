@@ -55,11 +55,6 @@ class GlobalOp(ABC):
         pass
 
 
-class GlobalOpIndex:
-    def __contains__(self, item):
-        return isinstance(item, GlobalOp)
-
-
 class GlobalAlgebra(IndexedGenerators, LieAlgebraWithGenerators):
     def __init__(self, boost, make=None):
         self.boost_ = boost
@@ -73,7 +68,7 @@ class GlobalAlgebra(IndexedGenerators, LieAlgebraWithGenerators):
         self._repr_term = str
         self.bracket_on_basis = self.lift(GlobalOp._bracket_)
         sa.Parent.__init__(self, base=ring, category=cat)
-        IndexedGenerators.__init__(self, indices=GlobalOpIndex(), prefix="")
+        IndexedGenerators.__init__(self, indices=(), prefix="")
         self.print_options(sorting_key=GlobalOp.sort_order, prefix="", bracket="")
 
     def lift(self, f):
