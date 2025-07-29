@@ -9,3 +9,7 @@ def extend_linear(fn):
 def extend_bilinear(fn):
     xtl = extend_linear
     return lambda left, right: xtl(lambda l: xtl(lambda r: fn(l, r))(right))(left)
+
+
+def compose(*f):
+    return (lambda *x: compose(*f[:-1])(f[-1](*x))) if f else lambda x: x

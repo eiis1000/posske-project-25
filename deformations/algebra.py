@@ -6,7 +6,7 @@ from sage.structure.indexed_generators import IndexedGenerators
 from sage.algebras.lie_algebras.lie_algebra import LieAlgebraWithGenerators
 from sage.algebras.lie_algebras.lie_algebra_element import LieAlgebraElement
 
-from .tools import extend_bilinear
+from .tools import compose
 
 
 @total_ordering
@@ -57,22 +57,19 @@ class GlobalOp(ABC):
 
 class GlobalAlgebra(IndexedGenerators, LieAlgebraWithGenerators):
     def __init__(self, boost, make=None):
-        self.boost_ = boost
-        self.boost = self.lift(boost)
-        self.make = self.lift(make)
+        self.boost_term = boost
+        self.boost = compose(self, boost)
+        self.make = compose(self, make)
         raw_ring = sa.QQbar
         self.i_ = raw_ring.gen()
         ring = sa.PolynomialRing(raw_ring, "k")
         cat = sa.LieAlgebras(ring).WithBasis()
 
         self._repr_term = str
-        self.bracket_on_basis = self.lift(GlobalOp._bracket_)
+        self.bracket_on_basis = compose(self, GlobalOp._bracket_)
         sa.Parent.__init__(self, base=ring, category=cat)
         IndexedGenerators.__init__(self, indices=(), prefix="")
-        self.print_options(sorting_key=GlobalOp.sort_order, prefix="", bracket="")
-
-    def lift(self, f):
-        return lambda *x: self(f(*x))
+        self.print_options(prefix="", bracket="")
 
     def _repr_(self):
         return "Global#Algebra"
