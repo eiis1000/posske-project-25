@@ -128,7 +128,7 @@ class GLNBoostOp(GlobalOp):
     def boost(other):
         if isinstance(other, GLNHomogOp):
             return GLNBoostOp(other)
-        elif isinstance(other.parent(), sa.CombinatorialFreeModule):
+        elif other.parent() in sa.LieAlgebras:
             return extend_linear(GLNBoostOp)(other)
         else:
             raise NotImplementedError()

@@ -1,10 +1,15 @@
 from abc import ABC, abstractmethod
+from functools import total_ordering
 import numpy as np
 import sage.all as sa
+from sage.structure.indexed_generators import IndexedGenerators
+from sage.algebras.lie_algebras.lie_algebra import LieAlgebraWithGenerators
+from sage.algebras.lie_algebras.lie_algebra_element import LieAlgebraElement
 
 from .tools import extend_bilinear
 
 
+@total_ordering
 class GlobalOp(ABC):
     def __hash__(self):
         if isinstance(self.data, np.ndarray):
@@ -20,6 +25,9 @@ class GlobalOp(ABC):
             return False
         return self.data == other.data
 
+    def __lt__(self, other):
+        return self.sort_order() < other.sort_order()
+
     @abstractmethod
     def __repr__(self):
         pass
@@ -34,7 +42,7 @@ class GlobalOp(ABC):
 
     def _bracket_(self, other):
         assert isinstance(other, GlobalOp)
-        if other.hardness() > self.hardness():
+        if other.sort_order() < self.sort_order():
             return {k: -v for k, v in other.bracket_ordered(self).items()}
         else:
             return self.bracket_ordered(other)
@@ -47,17 +55,29 @@ class GlobalOp(ABC):
         pass
 
 
-class GlobalAlgebra(sa.CombinatorialFreeModule):
+class GlobalOpIndex:
+    def __contains__(self, item):
+        return isinstance(item, GlobalOp)
+
+
+class GlobalAlgebra(IndexedGenerators, LieAlgebraWithGenerators):
     def __init__(self, boost, make=None):
         self.boost_ = boost
-        self.boost = lambda x: self(boost(x))
-        self.make = lambda x: self(make(x))  # for convenience
+        self.boost = self.lift(boost)
+        self.make = self.lift(make)
         raw_ring = sa.QQbar
         self.i_ = raw_ring.gen()
         ring = sa.PolynomialRing(raw_ring, "k")
-        category = sa.LieAlgebras(ring)
-        super().__init__(ring, basis_keys=None, category=category)
-        self.print_options(sorting_key=lambda x: x.sort_order(), prefix="", bracket="")
+        cat = sa.LieAlgebras(ring).WithBasis()
+
+        self._repr_term = str
+        self.bracket_on_basis = self.lift(GlobalOp._bracket_)
+        sa.Parent.__init__(self, base=ring, category=cat)
+        IndexedGenerators.__init__(self, indices=GlobalOpIndex(), prefix="")
+        self.print_options(sorting_key=GlobalOp.sort_order, prefix="", bracket="")
+
+    def lift(self, f):
+        return lambda *x: self(f(*x))
 
     def _repr_(self):
         return "Global#Algebra"
@@ -65,25 +85,8 @@ class GlobalAlgebra(sa.CombinatorialFreeModule):
     def _element_constructor_(self, x):
         """Convert x into an element of this algebra"""
         if isinstance(x, GlobalOp):
-            return self.monomial(x)
-        elif isinstance(x, dict):
-            result = self.zero()
-            for op, coeff in x.items():
-                result += coeff * self(op)
-            return result
-        else:
-            return super()._element_constructor_(x)
+            x = {x: 1}
+        return LieAlgebraWithGenerators._element_constructor_(self, x)
 
-    def bracket(self, left_op, right_op):
-        """Compute the bracket of two basis elements"""
-        result = self(extend_bilinear(GlobalOp._bracket_)(left_op, right_op))
-        for op, coeff in result:
-            if coeff.degree() > 0:
-                breakpoint()
-            assert coeff.degree() == 0
-        return result
-
-    # this is a hack to make a.bracket(b) work
-    class Element(sa.CombinatorialFreeModule.Element):
-        def _bracket_(self, right):
-            return self.parent().bracket(self, right)
+    class Element(LieAlgebraElement):
+        pass
