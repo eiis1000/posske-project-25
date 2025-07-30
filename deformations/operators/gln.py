@@ -71,7 +71,7 @@ class GLNHomogOp(GlobalOp):
         full_size = len(right_padded)
         symmetric_group = sa.SymmetricGroup(full_size)
         sga = sa.GroupAlgebra(symmetric_group, sa.ZZ)
-        sga = sa.LieAlgebra(associative=sga)
+        # sga = sa.LieAlgebra(associative=sga)
 
         accum = sga.zero()
         right_padded_sga = sga((right_padded + 1).tolist())
@@ -79,7 +79,7 @@ class GLNHomogOp(GlobalOp):
             left_extended = np.arange(full_size, dtype=int)
             left_extended[i : i + len(left_perm)] = left_perm + i
             left_extended_sga = sga((left_extended + 1).tolist())
-            accum += left_extended_sga.bracket(right_padded_sga)
+            accum += sga.bracket(left_extended_sga, right_padded_sga)
 
         final_dict = {}
         for sg_el, coeff in accum:
@@ -127,7 +127,7 @@ class GLNBoostOp(GlobalOp):
     def boost(other):
         if isinstance(other, GLNHomogOp):
             return GLNBoostOp(other)
-        elif other.parent() in sa.LieAlgebras:
+        elif other.parent() in sa.Modules:
             return extend_linear(GLNBoostOp)(other)
         else:
             raise NotImplementedError()
@@ -143,7 +143,7 @@ class GLNBoostOp(GlobalOp):
         full_size = len(left_padded)
         symmetric_group = sa.SymmetricGroup(full_size)
         sga = sa.GroupAlgebra(symmetric_group, Kpoly)
-        sga = sa.LieAlgebra(associative=sga)
+        # sga = sa.LieAlgebra(associative=sga)
 
         accum = sga.zero()
         left_padded_sga = sga((left_padded + 1).tolist())
@@ -151,7 +151,7 @@ class GLNBoostOp(GlobalOp):
             right_extended = np.arange(full_size, dtype=int)
             right_extended[i : i + len(right_perm)] = right_perm + i
             right_extended_sga = sga((right_extended + 1).tolist())
-            comm = left_padded_sga.bracket(right_extended_sga)
+            comm = sga.bracket(left_padded_sga, right_extended_sga)
             accum += (origin_offset + padding) * comm
             # we could have done left_legs -= padding later instead of doing
             # origin_offset + padding here, but this feels more morally correct
@@ -201,7 +201,7 @@ class GLNBoostOp(GlobalOp):
         full_size = len(right_padded)
         symmetric_group = sa.SymmetricGroup(full_size)
         sga = sa.GroupAlgebra(symmetric_group, Kpoly)
-        sga = sa.LieAlgebra(associative=sga)
+        # sga = sa.LieAlgebra(associative=sga)
 
         accum = sga.zero()
         right_padded_sga = sga((right_padded + 1).tolist())
@@ -209,7 +209,7 @@ class GLNBoostOp(GlobalOp):
             left_extended = np.arange(full_size, dtype=int)
             left_extended[i : i + len(left_perm)] = left_perm + i
             left_extended_sga = sga((left_extended + 1).tolist())
-            comm = left_extended_sga.bracket(right_padded_sga)
+            comm = sga.bracket(left_extended_sga, right_padded_sga)
             # # this max() bit is really subtle: it has to do with the fact that
             # # if the left permutation starts before the right (which we've
             # # localized), we aren't actually acting at the site of that
