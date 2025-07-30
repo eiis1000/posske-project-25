@@ -2,11 +2,16 @@ from abc import ABC, abstractmethod
 from functools import total_ordering
 import numpy as np
 import sage.all as sa
+
+from .tools import compose, wrap_logging
+
 from sage.structure.indexed_generators import IndexedGenerators
 from sage.algebras.lie_algebras.lie_algebra import LieAlgebraWithGenerators
 from sage.algebras.lie_algebras.lie_algebra_element import LieAlgebraElement
 
-from .tools import compose
+sa.IndexedGenerators = IndexedGenerators
+sa.LieAlgebraWithGenerators = LieAlgebraWithGenerators
+sa.LieAlgebraElement = LieAlgebraElement
 
 
 @total_ordering
@@ -55,7 +60,7 @@ class GlobalOp(ABC):
         pass
 
 
-class GlobalAlgebra(IndexedGenerators, LieAlgebraWithGenerators):
+class GlobalAlgebra(sa.IndexedGenerators, sa.LieAlgebraWithGenerators):
     def __init__(self, boost, make=None):
         self.boost_term = boost
         self.boost = compose(self, boost)
@@ -67,8 +72,9 @@ class GlobalAlgebra(IndexedGenerators, LieAlgebraWithGenerators):
 
         self._repr_term = str
         self.bracket_on_basis = compose(self, GlobalOp._bracket_)
+        self.bracket_on_basis = wrap_logging(self.bracket_on_basis)
         sa.Parent.__init__(self, base=ring, category=cat)
-        IndexedGenerators.__init__(self, indices=(), prefix="")
+        sa.IndexedGenerators.__init__(self, indices=(), prefix="")
         self.print_options(prefix="", bracket="")
 
     def _repr_(self):
@@ -78,7 +84,7 @@ class GlobalAlgebra(IndexedGenerators, LieAlgebraWithGenerators):
         """Convert x into an element of this algebra"""
         if isinstance(x, GlobalOp):
             x = {x: 1}
-        return LieAlgebraWithGenerators._element_constructor_(self, x)
+        return sa.LieAlgebraWithGenerators._element_constructor_(self, x)
 
-    class Element(LieAlgebraElement):
+    class Element(sa.LieAlgebraElement):
         pass

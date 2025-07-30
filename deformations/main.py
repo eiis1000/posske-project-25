@@ -1,7 +1,8 @@
+from .sage_proxy import sa  # initializes properly
+
 from .algebra import GlobalAlgebra
 from .charges import ShortRangeChain
 from .operators.gln import make_gln, GLNBoostOp
-import sage.all as sa  # keep for interactive
 
 
 def main():
@@ -15,7 +16,7 @@ def main():
     chain = ShortRangeChain(hamiltonian, logging=True)
     chain.ensure_filled(6)
 
-    deformation_top = 5
+    deformation_top = 4
     deformation_target = 2
     Q3_deformations = [None, None]
     for k in range(2, deformation_top + 1):
@@ -25,6 +26,7 @@ def main():
         )
         print(f"Q_{deformation_target}^[{k}]: {Q3_deformations[k]}\n----")
 
+    Q, BQ = chain.Q, chain.BQ
     breakpoint()
 
 

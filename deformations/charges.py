@@ -30,7 +30,7 @@ class ShortRangeChain:
         self.charge_tower.append(BQ2_bracket_Qtop * -self.i_ / (k - 1))
         self.boost_tower.append(self.algebra.boost(self.charge_tower[k]))
         if self.logging:
-            print(f"Q_{k}: {self.charge_tower[k]}")
+            print(f"Q_{k}: 1/{k - 1}*({(k - 1) * self.charge_tower[k]})")
 
     def first_order_boost_deformation_reduced(self, r, k):
         # implements eq (B.4)
