@@ -3,6 +3,7 @@ from functools import total_ordering
 import numpy as np
 import sage.all as sa
 
+from .config import enable_logging
 from .tools import compose, wrap_logging
 
 from sage.structure.indexed_generators import IndexedGenerators
@@ -72,6 +73,8 @@ class GlobalAlgebra(sa.IndexedGenerators, sa.LieAlgebraWithGenerators):
 
         self._repr_term = str
         self.bracket_on_basis = compose(self, GlobalOp._bracket_)
+        if enable_logging:
+            self.bracket_on_basis = wrap_logging(self.bracket_on_basis)
         self.bracket_on_basis = wrap_logging(self.bracket_on_basis)
         sa.Parent.__init__(self, base=ring, category=cat)
         sa.IndexedGenerators.__init__(self, indices=(), prefix="")
@@ -83,6 +86,7 @@ class GlobalAlgebra(sa.IndexedGenerators, sa.LieAlgebraWithGenerators):
     def _element_constructor_(self, x):
         """Convert x into an element of this algebra"""
         if isinstance(x, GlobalOp):
+            x.alg = self
             x = {x: 1}
         return sa.LieAlgebraWithGenerators._element_constructor_(self, x)
 

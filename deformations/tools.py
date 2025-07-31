@@ -1,3 +1,6 @@
+from .config import enable_logging
+
+
 def extend_linear(fn):
     return (
         lambda arg: fn(arg)
@@ -40,8 +43,7 @@ def func_name(fn):
 
 
 def wrap_logging(fn):
-    enable_logging_wrappers = True
-    if not enable_logging_wrappers:
+    if not enable_logging:
         return fn
 
     def wrapper(*args, **kwargs):

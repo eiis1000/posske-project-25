@@ -9,14 +9,16 @@ def main():
     alg = GlobalAlgebra(GLNBoostOp.boost, make=make_gln)
     i_ = alg.i_  # keep for interactive
 
-    # test = GlobalPermOp([1, 3, 2])
-    # print("Test permutation:", test)
+    test_perm = alg.make([1, 3, 4, 2])
+    print("Test permutation:", test_perm)
 
     hamiltonian = alg.make([1]) - alg.make([2, 1])
     chain = ShortRangeChain(hamiltonian, logging=True)
     chain.ensure_filled(6)
 
-    deformation_top = 6
+    print("Test commutator:", alg.bracket(test_perm, hamiltonian))
+
+    deformation_top = 4
     deformation_target = 2
     deformations = [None, None]
     for k in range(2, deformation_top + 1):
@@ -33,7 +35,7 @@ def main():
     # because it means that I just make boosts in the bracket and they should
     # automatically cancel, same for bilocals, etc.
 
-    Q, BQ = chain.Q, chain.BQ
+    Q, BQ = chain.Q, chain.BQ  # for repl
     breakpoint()
 
 

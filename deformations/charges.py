@@ -11,14 +11,12 @@ class ShortRangeChain:
         self.logging = logging
 
     def Q(self, k):
-        if k < 2:
-            raise IndexError("k must be at least 2")
+        assert k >= 2, "Charges are defined for k >= 2"
         self.ensure_filled(k)
         return self.charge_tower[k]
 
     def BQ(self, k):
-        if k < 2:
-            raise IndexError("k must be at least 2")
+        assert k >= 2, "Boosts are defined for k >= 2"
         self.ensure_filled(k)
         return self.boost_tower[k]
 
@@ -34,8 +32,7 @@ class ShortRangeChain:
 
     def first_order_boost_deformation_reduced(self, r, k):
         # implements eq (B.4)
-        return (k - 1) * self.i_ * self.BQ(k).bracket(self.Q(r)) + (r + k - 2) * self.Q(
-            r + k - 1
-        )
+        BQ, Q = self.BQ, self.Q
+        return (k - 1) * self.i_ * BQ(k).bracket(Q(r)) + (r + k - 2) * Q(r + k - 1)
         # can we instead do the above by constructing a left side that just
         # hits Qr? (we'd probably need to implement the G rotation generator)
