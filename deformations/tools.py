@@ -11,6 +11,14 @@ def extend_bilinear(fn):
     return lambda left, right: xtl(lambda l: xtl(lambda r: fn(l, r))(right))(left)
 
 
+def comm(a, b):
+    return a.bracket(b) if hasattr(a, "bracket") else a * b - b * a
+
+
+def anticomm(a, b):
+    return a * b + b * a
+
+
 def compose(*f):
     ret = (lambda *x: compose(*f[:-1])(f[-1](*x))) if f else lambda x: x
     ret.__name__ = "(" + " o ".join(func_name(fn) for fn in f) + ")"

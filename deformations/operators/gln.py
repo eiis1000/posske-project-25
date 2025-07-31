@@ -1,5 +1,5 @@
 from ..algebra import GlobalOp
-from ..tools import extend_linear
+from ..tools import extend_linear, anticomm
 
 import numpy as np
 import sage.all as sa
@@ -33,7 +33,7 @@ class GLNHomogOp(GlobalOp):
 
     def bracket_ordered(self, other):
         assert isinstance(other, GLNHomogOp)
-        return GLNHomogOp.bracket_perm_perm(self, other)
+        return GLNHomogOp.bracket_homog_homog(self, other)
 
     @staticmethod
     def check_valid_permutation(perm):
@@ -64,7 +64,7 @@ class GLNHomogOp(GlobalOp):
         return larger_perm
 
     @staticmethod
-    def bracket_perm_perm(left, right):
+    def bracket_homog_homog(left, right):
         left_perm, right_perm = left.data, right.data
         padding = len(left_perm) + 1
         right_padded = GLNHomogOp.pad_permutation(right_perm, padding)
@@ -121,7 +121,7 @@ class GLNBoostOp(GlobalOp):
 
     def bracket_ordered(self, other):
         assert isinstance(other, GLNHomogOp)
-        return GLNBoostOp.bracket_boost_perm(self, other)
+        return GLNBoostOp.bracket_boost_homog(self, other)
 
     @staticmethod
     def boost(other):
@@ -133,7 +133,7 @@ class GLNBoostOp(GlobalOp):
             raise NotImplementedError()
 
     @staticmethod
-    def bracket_boost_perm(left, right):
+    def bracket_boost_homog(left, right):
         Kpoly = sa.PolynomialRing(sa.ZZ, "k")
         origin_offset = Kpoly.gen()
         left_perm, right_perm = left.data.data, right.data
@@ -152,10 +152,9 @@ class GLNBoostOp(GlobalOp):
             right_extended[i : i + len(right_perm)] = right_perm + i
             right_extended_sga = sga((right_extended + 1).tolist())
             comm = sga.bracket(left_padded_sga, right_extended_sga)
-            accum += (origin_offset + padding) * comm
-            # we could have done left_legs -= padding later instead of doing
-            # origin_offset + padding here, but this feels more morally correct
-            # accum += origin_offset * comm  # less morally correct, but works
+            # accum += (origin_offset + padding) * comm
+            # we will instead do left_legs -= padding later:
+            accum += origin_offset * comm  # less morally correct, but works
 
         final_dict = {}
         identity_multiple = Kpoly.zero()
@@ -166,80 +165,20 @@ class GLNBoostOp(GlobalOp):
             perm_promoted = GLNHomogOp(perm_reduced)
             pre_coeff = final_dict.get(perm_promoted, 0)
 
-            # left_legs -= padding # incompatible with + padding on accum
+            left_legs -= padding  # incompatible with + padding on accum
             right_legs -= padding  # not necessary, but morally correct
+
+            # it's unclear whether symmetric identification matters, but to
+            # reproduce the results in the paper, we need to do it.
+            symmetric_identification = True
+            if symmetric_identification:
+                left_legs, right_legs = (
+                    Kpoly(left_legs - right_legs) / 2,
+                    Kpoly(right_legs - left_legs) / 2,
+                )
 
             # this perm_offset chicanery is an idea to do a simpler thing than
             # the complicated identification relations (3.20) in the paper, and
-            # empirically it's worked so far. the idea is that we essentially
-            # force every single permutation in the boost (i.e. which has a
-            # linear coefficient of origin_offset) to be shifted by the actual
-            # offset of the permutation; this should be intuitively clear.
-            # similarly, one can view this as implementing the spectator leg
-            # relations in (3.19) directly.
-            final_dict[perm_promoted] = pre_coeff + coeff.subs(
-                origin_offset - left_legs
-            )
-            # we need to subtract the corresponding factors of the identity to
-            # compensate for the right-side spectator legs; again, this can be
-            # viewed as implementing (3.19) directly.
-            identity_multiple -= (
-                perm_promoted.vacuum_ev() * right_legs * coeff.coefficient(1)
-            )
-
-        final_dict[GLNHomogOp([1])] = identity_multiple
-
-        return final_dict
-
-    @staticmethod
-    def bracket_boost_perm_OLDMETHOD(left, right):
-        Kpoly = sa.PolynomialRing(sa.ZZ, "k")
-        origin_offset = Kpoly.gen()
-        left_perm, right_perm = left.data.data, right.data
-        padding = len(left_perm) + 1
-        right_padded = GLNHomogOp.pad_permutation(right_perm, padding)
-        full_size = len(right_padded)
-        symmetric_group = sa.SymmetricGroup(full_size)
-        sga = sa.GroupAlgebra(symmetric_group, Kpoly)
-        # sga = sa.LieAlgebra(associative=sga)
-
-        accum = sga.zero()
-        right_padded_sga = sga((right_padded + 1).tolist())
-        for i in range(full_size - len(left_perm)):
-            left_extended = np.arange(full_size, dtype=int)
-            left_extended[i : i + len(left_perm)] = left_perm + i
-            left_extended_sga = sga((left_extended + 1).tolist())
-            comm = sga.bracket(left_extended_sga, right_padded_sga)
-            # # this max() bit is really subtle: it has to do with the fact that
-            # # if the left permutation starts before the right (which we've
-            # # localized), we aren't actually acting at the site of that
-            # # localized right permutation, so we need to think about which
-            # # site we're actually acting on and use the appropriate shift.
-            # # also, since the origin offset is arbitrary, I think we
-            # # could have done max(i, padding) instead, but we're doing it this
-            # # way to more directly reflect the choice of spin chain origin.
-            # accum += (origin_offset + max(i - padding, 0)) * comm
-            # ACTUALLY, we'll do something else instead; see the comment in
-            # the final loop for more details.
-            accum += (origin_offset + i - padding) * comm
-            # it seems that subtracting padding does nothing, but it's moral
-
-        final_dict = {}
-        identity_multiple = Kpoly.zero()
-        for sg_el, coeff in accum:
-            perm = list(sg_el.tuple())
-            perm_reduced, legs = GLNHomogOp.reduce_permutation(perm)
-            left_legs, right_legs = legs
-            perm_promoted = GLNHomogOp(perm_reduced)
-            pre_coeff = final_dict.get(perm_promoted, 0)
-
-            # the following seem to be unnecessary but are morally correct
-            left_legs -= padding
-            right_legs -= padding
-
-            # this perm_offset chicanery is very very subtle: I think that it's
-            # a valid alternative to combining the max(i-padding, 0) idea from
-            # above with the identification relations (3.20) in the paper, and
             # empirically it's worked so far. the idea is that we essentially
             # force every single permutation in the boost (i.e. which has a
             # linear coefficient of origin_offset) to be shifted by the actual
@@ -277,7 +216,26 @@ class GLNBilocalOp(GlobalOp):
         return 100
 
     def bracket_ordered(self, other):
-        raise NotImplementedError()
+        if not isinstance(other, GLNHomogOp):
+            raise NotImplementedError()
+        return self.bracket_bilocal_homog(self, other)
+
+    @staticmethod
+    def bracket_bilocal_homog(left, right):
+        bileft, birght = left.data
+        bileft_perm, birght_perm = bileft.data, birght.data
+        target = right
+        target_perm = target.data
+        full_size = max(len(bileft_perm), len(birght_perm), len(target_perm))
+        sg = sa.SymmetricGroup(full_size)
+        sga = sa.GroupAlgebra(sg, sa.ZZ)
+        bileft_sg = sga((bileft_perm + 1).tolist())
+        birght_sg = sga((birght_perm + 1).tolist())
+        target_sg = sga((target_perm + 1).tolist())
+
+        accum = sga.zero()
+
+        pass
 
     def selfsort_tuple(self):
         return (*self.data[0].sort_order(), *self.data[1].sort_order())
