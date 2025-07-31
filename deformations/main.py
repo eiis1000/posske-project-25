@@ -35,9 +35,15 @@ def main():
     # because it means that I just make boosts in the bracket and they should
     # automatically cancel, same for bilocals, etc.
 
+    def bilocal_boost(q):
+        ones = chain.Q(1)
+        return (alg.bilocalize(ones, q) + alg.bilocalize(q, ones)) / 2
+
     Q, BQ = chain.Q, chain.BQ  # for repl
-    Q2Q3 = alg.bilocalize(Q(2), Q(3))
-    print("Q2Q3:", Q2Q3)
+    lbl = lambda a, b: alg.bilocalize(Q(a), Q(b))
+    BQ2 = BQ(2)
+    BLBQ2 = bilocal_boost(Q(2))
+    # print("Q2Q3:", Q2Q3)
     breakpoint()
 
 

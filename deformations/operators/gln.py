@@ -38,7 +38,7 @@ def reduce_permutation(perm, padding=0):
     perm = normalize_permutation(perm)
     nontrivial_indices = np.where(perm != np.arange(len(perm)))[0]
     if len(nontrivial_indices) == 0:
-        return np.array([0], dtype=int), (0, 0)
+        return np.array([0], dtype=int), (0, len(perm) - 1 - 2 * padding)
     offset, end = nontrivial_indices.min(), nontrivial_indices.max() + 1
     reduced = perm[offset:end]
     reduced = reduced - offset

@@ -5,18 +5,20 @@ class ShortRangeChain:
     def __init__(self, hamiltonian, logging=False):
         self.hamiltonian = hamiltonian
         self.algebra = hamiltonian.parent()
-        self.i_ = self.algebra.i_
-        self.charge_tower = [None, None, hamiltonian]
-        self.boost_tower = [None, None, self.algebra.boost(hamiltonian)]
+        alg = self.algebra
+        self.i_ = alg.i_
+        myQ1 = alg.make([1])  # nonstandard but feels right
+        self.charge_tower = [None, myQ1, hamiltonian]
+        self.boost_tower = [None, alg.boost(myQ1), alg.boost(hamiltonian)]
         self.logging = logging
 
     def Q(self, k):
-        assert k >= 2, "Charges are defined for k >= 2"
+        assert k >= 1, "Charges are defined for k >= 1"
         self.ensure_filled(k)
         return self.charge_tower[k]
 
     def BQ(self, k):
-        assert k >= 2, "Boosts are defined for k >= 2"
+        assert k >= 1, "Boosts are defined for k >= 1"
         self.ensure_filled(k)
         return self.boost_tower[k]
 
