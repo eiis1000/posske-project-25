@@ -2,11 +2,11 @@ from .sage_proxy import sa  # initializes properly
 
 from .algebra import GlobalAlgebra
 from .charges import ShortRangeChain
-from .operators.gln import make_gln, GLNBoostOp
+from .operators.gln import make_gln, GLNBoostOp, GLNBilocalOp
 
 
 def main():
-    alg = GlobalAlgebra(GLNBoostOp.boost, make=make_gln)
+    alg = GlobalAlgebra(GLNBoostOp.boost, GLNBilocalOp.bilocalize, make=make_gln)
     i_ = alg.i_  # keep for interactive
 
     test_perm = alg.make([1, 3, 4, 2])
@@ -36,6 +36,8 @@ def main():
     # automatically cancel, same for bilocals, etc.
 
     Q, BQ = chain.Q, chain.BQ  # for repl
+    Q2Q3 = alg.bilocalize(Q(2), Q(3))
+    print("Q2Q3:", Q2Q3)
     breakpoint()
 
 

@@ -20,6 +20,8 @@ class GlobalOp(ABC):
     def __hash__(self):
         if isinstance(self.data, np.ndarray):
             return hash((tuple(self.data), type(self)))
+        elif isinstance(self.data, (list, tuple)):
+            return hash((tuple(tuple(k) for k in self.data), type(self)))
         return hash((self.data, type(self)))
 
     def __eq__(self, other):
@@ -27,8 +29,12 @@ class GlobalOp(ABC):
             return False
         if isinstance(self.data, np.ndarray) and isinstance(other.data, np.ndarray):
             return np.array_equal(self.data, other.data)
-        elif isinstance(self.data, np.ndarray) or isinstance(other.data, np.ndarray):
-            return False
+        elif isinstance(self.data, tuple):
+            assert len(self.data) == 2
+            assert isinstance(self.data[0], np.ndarray)
+            self_l, self_r = self.data
+            other_l, other_r = other.data
+            return np.array_equal(self_l, other_l) and np.array_equal(self_r, other_r)
         return self.data == other.data
 
     def __lt__(self, other):
@@ -62,13 +68,15 @@ class GlobalOp(ABC):
 
 
 class GlobalAlgebra(sa.IndexedGenerators, sa.LieAlgebraWithGenerators):
-    def __init__(self, boost, make=None):
+    def __init__(self, boost, bilocalize, make=None):
         self.boost_term = boost
         self.boost = compose(self, boost)
+        self.bilocalize = compose(self, bilocalize)
         self.make = compose(self, make)
         raw_ring = sa.QQbar
         self.i_ = raw_ring.gen()
         ring = sa.PolynomialRing(raw_ring, "k")
+        self.ring = ring
         cat = sa.LieAlgebras(ring).WithBasis()
 
         self._repr_term = str
@@ -87,7 +95,7 @@ class GlobalAlgebra(sa.IndexedGenerators, sa.LieAlgebraWithGenerators):
         """Convert x into an element of this algebra"""
         if isinstance(x, GlobalOp):
             x.alg = self
-            x = {x: 1}
+            x = {x: self.ring(1)}
         return sa.LieAlgebraWithGenerators._element_constructor_(self, x)
 
     class Element(sa.LieAlgebraElement):
