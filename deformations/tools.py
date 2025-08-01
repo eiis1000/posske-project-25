@@ -58,3 +58,29 @@ def wrap_logging(fn):
         return x
 
     return wrapper
+
+
+if enable_logging:
+
+    class AccumWrapper:
+        def __init__(self, obj):
+            print("Making accum")
+            self._wrapped = obj
+
+        def __isub__(self, other):
+            print(f"-= {other}")
+            self._wrapped -= other
+            return self
+
+        def __iadd__(self, other):
+            print(f"+= {other}")
+            self._wrapped += other
+            return self
+
+        def __getattr__(self, name):
+            return getattr(self._wrapped, name)
+
+        def __repr__(self):
+            return f"Wrapper({repr(self._wrapped)})"
+else:
+    AccumWrapper = lambda x: x

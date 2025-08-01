@@ -3,7 +3,7 @@ from functools import total_ordering
 import numpy as np
 import sage.all as sa
 
-from .config import enable_logging
+from .config import enable_logging, log_basis_bracket
 from .tools import compose, wrap_logging
 
 from sage.structure.indexed_generators import IndexedGenerators
@@ -81,9 +81,8 @@ class GlobalAlgebra(sa.IndexedGenerators, sa.LieAlgebraWithGenerators):
 
         self._repr_term = str
         self.bracket_on_basis = compose(self, GlobalOp._bracket_)
-        if enable_logging:
+        if enable_logging and log_basis_bracket:
             self.bracket_on_basis = wrap_logging(self.bracket_on_basis)
-        self.bracket_on_basis = wrap_logging(self.bracket_on_basis)
         sa.Parent.__init__(self, base=ring, category=cat)
         sa.IndexedGenerators.__init__(self, indices=(), prefix="")
         self.print_options(prefix="", bracket="")

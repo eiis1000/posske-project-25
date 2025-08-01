@@ -1,6 +1,6 @@
 from ..algebra import GlobalOp
 from ..config import perm_print_joiner, symmetric_boost_identification
-from ..tools import extend_linear, anticomm
+from ..tools import extend_linear, AccumWrapper
 
 import numpy as np
 import sage.all as sa
@@ -40,6 +40,7 @@ def reduce_permutation(perm, padding=0):
     if len(nontrivial_indices) == 0:
         return np.array([0], dtype=int), (0, len(perm) - 1 - 2 * padding)
     offset, end = nontrivial_indices.min(), nontrivial_indices.max() + 1
+    offset, end = int(offset), int(end)  # avoids sage weirdness with np.int64
     reduced = perm[offset:end]
     reduced = reduced - offset
     assert is_valid_permutation(reduced)
@@ -93,7 +94,7 @@ def drag_right_on_left(left_perm, right_perm):
     return accum, padding
 
 
-def comm_perm(left_perm, right_perm):
+def perm_compose_sided(left_perm, right_perm):
     assert is_valid_permutation(left_perm)
     assert is_valid_permutation(right_perm)
     sg = sa.SymmetricGroup(max(len(left_perm), len(right_perm)))
@@ -301,43 +302,86 @@ class GLNBilocalOp(GlobalOp):
 
     @staticmethod
     def reduce_slashed(left, lpad, rght, rpad, alg):
-        ring = alg.base()
+        """
+        [A/B]&=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{A_a, B_b}
+        \\&=\frac12\sum_{0<a}\sum_{a<b\leq N-|B\leg |+1} \Bqty{A_a,  B \leg_b}
+        \\&=\frac12\sum_{0<a}\sum_{a<b\leq N-|B\leg |} \Bqty{A_a, B\leg_b}+\frac12\sum_{0<a} \Bqty{A_a, B_{N-|B|}}
+        \\&=[A/ B\leg ]+[A]\ev B
+        \\&=\frac12\sum_{0<a}\sum_{a-1<b\leq N-|B|} \Bqty{A_a, \leg B_b}
+        \\&=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{A_a, \leg B_b}+\frac12\sum_a\Bqty{A_a, \leg B_a}
+        \\&=[A/\leg B]+\antiwrap{A, \leg B}
+        \\&=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{A\leg_a,  B_b}
+        \\&=[A\leg/ B]
+        \\&=\frac12\sum_{-1<a}\sum_{a+1<b\leq N-|B|} \Bqty{\leg A_a, B_b}
+        \\&=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{\leg A_a, B_b}+\frac12\sum_{b \leq N-|B|} \Bqty{A_0, B_b}-\frac12\sum_{0<a}\Bqty{\leg A_a, B_{a+1}}
+        \\&=[\leg A/ B ]+\ev A [B]-\antiwrap{A, B}
+        """
         left = normalize_permutation(left)
         rght = normalize_permutation(rght)
         left_red, left_legs = reduce_permutation(left, padding=lpad)
         ll_legs, lr_legs = left_legs
-        ll_legs, lr_legs = ring(ll_legs), ring(lr_legs)
 
         rght_red, rght_legs = reduce_permutation(rght, padding=rpad)
         rl_legs, rr_legs = rght_legs
-        rl_legs, rr_legs = ring(rl_legs), ring(rr_legs)
 
         left_hom, rght_hom = GLNHomogOp(left_red), GLNHomogOp(rght_red)
         primary = GLNBilocalOp(left_red, rght_red)
 
         accum = alg.zero()
+        # accum = AccumWrapper(accum)
         accum += alg(primary)
         accum -= ll_legs * left_hom.vacuum_ev() * alg(rght_hom)
         accum -= rr_legs * rght_hom.vacuum_ev() * alg(left_hom)
-        comms = comm_perm(left, rght)
-        # note we use rl for both of the below, this is an anticommutator
-        accum -= rl_legs * (alg(GLNHomogOp(comms[0])) + alg(GLNHomogOp(comms[1])))
-        # note also that lr isn't used because I think it's only on boundary?
+        accum = GLNBilocalOp.reduce_slashed_recurse(
+            left_red, ll_legs, rght_red, rl_legs, accum
+        )
+        # note that lr isn't used because I think it's only on boundary.
+
+        accum = accum._wrapped if isinstance(accum, AccumWrapper) else accum
         return accum, primary
 
     @staticmethod
+    def reduce_slashed_recurse(l_red, ll_legs, r_red, rl_legs, accum):
+        alg = accum.parent()
+        if rl_legs > 0:
+            comms = perm_compose_sided(l_red, pad_permutation(r_red, rl_legs))
+            accum -= GLNBilocalOp.antiwrap(comms, alg)
+            return GLNBilocalOp.reduce_slashed_recurse(
+                l_red, ll_legs, r_red, rl_legs - 1, accum
+            )
+        elif rl_legs < 0:
+            comms = perm_compose_sided(l_red, r_red)
+            accum += GLNBilocalOp.antiwrap(comms, alg)
+            return GLNBilocalOp.reduce_slashed_recurse(
+                l_red, ll_legs, pad_permutation(r_red, 1), rl_legs + 1, accum
+            )
+        elif ll_legs > 0:
+            comms = perm_compose_sided(l_red, r_red)
+            accum += GLNBilocalOp.antiwrap(comms, alg)
+            return GLNBilocalOp.reduce_slashed_recurse(
+                pad_permutation(l_red, 1), ll_legs - 1, r_red, rl_legs, accum
+            )
+        elif ll_legs < 0:
+            comms = perm_compose_sided(l_red, pad_permutation(r_red, -ll_legs))
+            accum -= GLNBilocalOp.antiwrap(comms, alg)
+            return GLNBilocalOp.reduce_slashed_recurse(
+                l_red, ll_legs + 1, r_red, rl_legs, accum
+            )
+        else:
+            return accum
+
+    @staticmethod
     def bracket_bilocal_homog(left, right):
+        # it's possible that all the antiwrap terms will in general cancel out
+        # in this method, but I haven't proved that it's true and it seems easy
+        # to make a mistake while doing so.
         bileft, birght = left.data
         target = right.data
         # for short, these are bl, br, tg.
 
-        def antiwrap_four(comms):
-            lr = alg(GLNHomogOp(comms[0]))
-            rl = alg(GLNHomogOp(comms[1]))
-            return (lr + rl) / 4
-
         alg = left.alg or right.alg
         final = alg.zero()
+        # final = AccumWrapper(final)
         br_tg_drag, br_tg_pad = drag_right_on_left(birght, target)
         for sg_el, coeff in br_tg_drag:
             br_tg_perm = list(sg_el.tuple())
@@ -345,10 +389,11 @@ class GLNBilocalOp(GlobalOp):
                 bileft, 0, br_tg_perm, br_tg_pad, alg
             )
             final += coeff * reduced
-            # now the antiwrap term
+
             red_left, red_rght = primary.data
-            red_comms = comm_perm(red_left, red_rght)
-            final -= coeff * antiwrap_four(red_comms)
+            red_comms = perm_compose_sided(red_left, red_rght)
+            final -= coeff * GLNBilocalOp.antiwrap(red_comms, alg) / 2
+
         bl_tg_drag, bl_tg_pad = drag_right_on_left(bileft, target)
         for sg_el, coeff in bl_tg_drag:
             bl_tg_perm = list(sg_el.tuple())
@@ -356,14 +401,19 @@ class GLNBilocalOp(GlobalOp):
                 bl_tg_perm, bl_tg_pad, birght, 0, alg
             )
             final += coeff * reduced
-            # now the antiwrap term
+
             red_left, red_rght = primary.data
-            red_comms = comm_perm(red_left, red_rght)
-            final -= coeff * antiwrap_four(red_comms)
+            red_comms = perm_compose_sided(red_left, red_rght)
+            final -= coeff * GLNBilocalOp.antiwrap(red_comms, alg) / 2
 
-        # now we need the last antiwrap term
-        bl_br_comms = comm_perm(bileft, birght)
+        bl_br_comms = perm_compose_sided(bileft, birght)
+        final += GLNBilocalOp.antiwrap(bl_br_comms, alg).bracket(alg(right)) / 2
 
-        final += antiwrap_four(bl_br_comms).bracket(alg(right))
-
+        final = final._wrapped if isinstance(final, AccumWrapper) else final
         return final
+
+    @staticmethod
+    def antiwrap(comms, alg):
+        lr = alg(GLNHomogOp(comms[0]))
+        rl = alg(GLNHomogOp(comms[1]))
+        return (lr + rl) / 2

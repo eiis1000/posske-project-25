@@ -7,9 +7,9 @@ class ShortRangeChain:
         self.algebra = hamiltonian.parent()
         alg = self.algebra
         self.i_ = alg.i_
-        myQ1 = alg.make([1])  # nonstandard but feels right
-        self.charge_tower = [None, myQ1, hamiltonian]
-        self.boost_tower = [None, alg.boost(myQ1), alg.boost(hamiltonian)]
+        length_op = alg.make([1])  # calling this Q1 isn't standard, but it feels right
+        self.charge_tower = [None, length_op, hamiltonian]
+        self.boost_tower = [None, alg.boost(length_op), alg.boost(hamiltonian)]
         self.logging = logging
 
     def Q(self, k):

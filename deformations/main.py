@@ -9,41 +9,34 @@ def main():
     alg = GlobalAlgebra(GLNBoostOp.boost, GLNBilocalOp.bilocalize, make=make_gln)
     i_ = alg.i_  # keep for interactive
 
-    test_perm = alg.make([1, 3, 4, 2])
-    print("Test permutation:", test_perm)
+    # test_perm = alg.make([1, 3, 4, 2])
+    # print("Test permutation:", test_perm)
 
     hamiltonian = alg.make([1]) - alg.make([2, 1])
+    # print("Test commutator:", alg.bracket(test_perm, hamiltonian))
+
     chain = ShortRangeChain(hamiltonian, logging=True)
     chain.ensure_filled(6)
-
-    print("Test commutator:", alg.bracket(test_perm, hamiltonian))
 
     deformation_top = 4
     deformation_target = 2
     deformations = [None, None]
     for k in range(2, deformation_top + 1):
-        # Q3_deformations.append(i_ * chain.BQ(3).bracket(chain.Q(k)) )
         deformations.append(
             chain.first_order_boost_deformation_reduced(deformation_target, k)
         )
-        print(f"Q_{deformation_target}^[{k}]: {deformations[k]}\n----")
-
-    # TODO I think it would be much nicer to have homog, boost, bilocal all
-    # have the permutations as raw data and have the constructor do the
-    # operator identifications so that all of that tooling can be pulled out
-    # of the bracket. this also substantially simplifies the bracket logic
-    # because it means that I just make boosts in the bracket and they should
-    # automatically cancel, same for bilocals, etc.
+        print(f"Q_{deformation_target}^[{k}]: {deformations[k]}")  # \n----")
 
     def bilocal_boost(q):
         ones = chain.Q(1)
-        return (alg.bilocalize(ones, q) + alg.bilocalize(q, ones)) / 2
+        return (alg.bilocalize(ones, q) - alg.bilocalize(q, ones)) / 2
 
-    Q, BQ = chain.Q, chain.BQ  # for repl
+    # definitions for repl convenience
+    Q, BQ = chain.Q, chain.BQ
     lbl = lambda a, b: alg.bilocalize(Q(a), Q(b))
     BQ2 = BQ(2)
     BLBQ2 = bilocal_boost(Q(2))
-    # print("Q2Q3:", Q2Q3)
+    print("eq. 3.34: 1/4*(", i_ * 4 * lbl(2, 3).bracket(Q(2)), ")")
     breakpoint()
 
 
