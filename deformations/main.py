@@ -27,11 +27,11 @@ def main():
         )
         print(f"Q_{deformation_target}^[{k}]: {deformations[k]}")  # \n----")
 
+    # definitions for repl convenience
     def bilocal_boost(q):
         ones = chain.Q(1)
         return (alg.bilocalize(ones, q) - alg.bilocalize(q, ones)) / 2
 
-    # definitions for repl convenience
     Q, BQ = chain.Q, chain.BQ
     lbl = lambda a, b: alg.bilocalize(Q(a), Q(b))
     BQ2 = BQ(2)

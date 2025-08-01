@@ -1,5 +1,9 @@
 from ..algebra import GlobalOp
-from ..config import perm_print_joiner, symmetric_boost_identification
+from ..config import (
+    perm_print_joiner,
+    symmetric_boost_identification,
+    incl_antiwrap_in_bilocal_bracket,
+)
 from ..tools import extend_linear, AccumWrapper
 
 import numpy as np
@@ -380,19 +384,19 @@ class GLNBilocalOp(GlobalOp):
         # for short, these are bl, br, tg.
 
         alg = left.alg or right.alg
-        final = alg.zero()
-        # final = AccumWrapper(final)
+        accum_slashed = alg.zero()
+        accum_antiwrap = alg.zero()
         br_tg_drag, br_tg_pad = drag_right_on_left(birght, target)
         for sg_el, coeff in br_tg_drag:
             br_tg_perm = list(sg_el.tuple())
             reduced, primary = GLNBilocalOp.reduce_slashed(
                 bileft, 0, br_tg_perm, br_tg_pad, alg
             )
-            final += coeff * reduced
+            accum_slashed += coeff * reduced
 
             red_left, red_rght = primary.data
             red_comms = perm_compose_sided(red_left, red_rght)
-            final -= coeff * GLNBilocalOp.antiwrap(red_comms, alg) / 2
+            accum_antiwrap -= coeff * GLNBilocalOp.antiwrap(red_comms, alg) / 2
 
         bl_tg_drag, bl_tg_pad = drag_right_on_left(bileft, target)
         for sg_el, coeff in bl_tg_drag:
@@ -400,17 +404,20 @@ class GLNBilocalOp(GlobalOp):
             reduced, primary = GLNBilocalOp.reduce_slashed(
                 bl_tg_perm, bl_tg_pad, birght, 0, alg
             )
-            final += coeff * reduced
+            accum_slashed += coeff * reduced
 
             red_left, red_rght = primary.data
             red_comms = perm_compose_sided(red_left, red_rght)
-            final -= coeff * GLNBilocalOp.antiwrap(red_comms, alg) / 2
+            accum_antiwrap -= coeff * GLNBilocalOp.antiwrap(red_comms, alg) / 2
 
         bl_br_comms = perm_compose_sided(bileft, birght)
-        final += GLNBilocalOp.antiwrap(bl_br_comms, alg).bracket(alg(right)) / 2
+        accum_antiwrap += (
+            GLNBilocalOp.antiwrap(bl_br_comms, alg).bracket(alg(right)) / 2
+        )
 
-        final = final._wrapped if isinstance(final, AccumWrapper) else final
-        return final
+        if not incl_antiwrap_in_bilocal_bracket:
+            accum_antiwrap = 0
+        return accum_slashed + accum_antiwrap
 
     @staticmethod
     def antiwrap(comms, alg):
