@@ -75,7 +75,7 @@ class GlobalAlgebra(sa.IndexedGenerators, sa.LieAlgebraWithGenerators):
         self.make = compose(self, make)
         raw_ring = sa.QQbar
         self.i_ = raw_ring.gen()
-        ring = sa.PolynomialRing(raw_ring, "k")
+        ring = sa.PolynomialRing(raw_ring, "λ")
         self.ring = ring
         cat = sa.LieAlgebras(ring).WithBasis()
 

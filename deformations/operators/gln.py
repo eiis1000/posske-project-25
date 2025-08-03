@@ -227,7 +227,7 @@ class GLNBoostOp(GlobalOp):
 
 
 class GLNBilocalOp(GlobalOp):
-    """
+    r"""
     I really hate the paper's bilocal operator conventions, so I've rolled my
     own, and I hope it ends up working. I've included some scratch work below.
 
@@ -294,8 +294,14 @@ class GLNBilocalOp(GlobalOp):
             accum = alg.zero()
             for l, lc in left:
                 for r, rc in right:
+                    if not isinstance(l, GLNHomogOp) or not isinstance(r, GLNHomogOp):
+                        breakpoint()
+                    assert isinstance(l, GLNHomogOp) and isinstance(r, GLNHomogOp)
                     lx = np.arange(left_len, dtype=int)
-                    lx[: len(l.data)] = l.data
+                    try:
+                        lx[: len(l.data)] = l.data
+                    except:
+                        breakpoint()
                     rx = np.arange(right_len, dtype=int)
                     rx[: len(r.data)] = r.data
                     accum += lc * rc * GLNBilocalOp.reduce_slashed(lx, 0, rx, 0, alg)[0]
@@ -306,7 +312,7 @@ class GLNBilocalOp(GlobalOp):
 
     @staticmethod
     def reduce_slashed(left, lpad, rght, rpad, alg):
-        """
+        r"""
         [A/B]&=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{A_a, B_b}
         \\&=\frac12\sum_{0<a}\sum_{a<b\leq N-|B\leg |+1} \Bqty{A_a,  B \leg_b}
         \\&=\frac12\sum_{0<a}\sum_{a<b\leq N-|B\leg |} \Bqty{A_a, B\leg_b}+\frac12\sum_{0<a} \Bqty{A_a, B_{N-|B|}}

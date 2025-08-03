@@ -4,8 +4,8 @@ import sage.all as sa
 class ShortRangeChain:
     def __init__(self, hamiltonian, logging=False):
         self.hamiltonian = hamiltonian
-        self.algebra = hamiltonian.parent()
-        alg = self.algebra
+        self.alg = hamiltonian.parent()
+        alg = self.alg
         self.i_ = alg.i_
         length_op = alg.make([1])  # calling this Q1 isn't standard, but it feels right
         self.charge_tower = [None, length_op, hamiltonian]
@@ -28,7 +28,7 @@ class ShortRangeChain:
         self.ensure_filled(k - 1)
         BQ2_bracket_Qtop = self.boost_tower[2].bracket(self.charge_tower[k - 1])
         self.charge_tower.append(BQ2_bracket_Qtop * -self.i_ / (k - 1))
-        self.boost_tower.append(self.algebra.boost(self.charge_tower[k]))
+        self.boost_tower.append(self.alg.boost(self.charge_tower[k]))
         if self.logging:
             print(f"Q_{k}: 1/{k - 1}*({(k - 1) * self.charge_tower[k]})")
 
