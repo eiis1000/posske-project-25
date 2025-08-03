@@ -3,19 +3,33 @@ from ..config import (
     perm_print_joiner,
     symmetric_boost_identification,
     incl_antiwrap_in_bilocal_bracket,
+    use_numba,
 )
 from ..tools import extend_linear, AccumWrapper
 
 import numpy as np
 import sage.all as sa
 
+if use_numba:
+    from numba import njit
+else:
+    njit = lambda *_, **__: lambda fn: fn
 
+
+@njit(cache=True)
 def is_valid_permutation(perm):
-    return (
-        np.all(perm >= 0) and np.all(perm < len(perm)) and len(perm) == len(set(perm))
-    )
+    # if not isinstance(perm, np.ndarray):
+    #     return False
+    if len(perm) != len(set(perm)):
+        return False
+    if not np.all(perm >= 0):
+        return False
+    if not np.all(perm < len(perm)):
+        return False
+    return True
 
 
+@njit(cache=True)
 def is_reduced_permutation(perm):
     if not is_valid_permutation(perm):
         return False

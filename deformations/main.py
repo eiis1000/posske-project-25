@@ -39,19 +39,43 @@ def main():
     # BLBQ2 = bilocal_boost(Q(2))
     # print("eq. 3.34: 1/4*(", i_ * 4 * lbl(2, 3).bracket(Q(2)), ")")
 
-    lrc = LongRangeChain(chain, (3,))
-    lrc.ensure_order(2)
+    lrc = LongRangeChain(chain, (3, 2))
+    # lrc = LongRangeChain(chain, (3, ))
+    lrc.ensure_order(1)
     print("Q2: ", lrc.format(lrc.Q(2)))
     print("Q3: ", lrc.format(lrc.Q(3)))
     print(
         "[Q3, Q2]: ",
         lrc.format(lrc.bracket_to_order(lrc.Q(3), lrc.Q(2)), lrc.order()),
     )
+    # lrc.bracket_to_order(lrc.deform_gen(), lrc.Q(2))
     # print("All brackets consistent: ", lrc.algebra_consistency())
 
+    # lrc.ensure_order(3)
+    # lrc.ensure_filled(4)
+    # print("[Q3, Q4]: ", lrc.format(lrc.bracket_to_order(Q(3), Q(4), 2), 2))
+    # print(
+    #     "[B[Q3], Q4]: ",
+    #     str(lrc.bracket_to_order(alg.boost(Q(3)), Q(4), 2), 2)[:100],
+    #     " + ...",
+    # )
     Q = lrc.Q
-    breakpoint()
+    # breakpoint()
 
+
+import sys
+import pdb
+
+
+def custom_excepthook(exc_type, exc_value, exc_traceback):
+    if exc_type == AssertionError:
+        print("AssertionError caught, dropping into debugger:")
+        pdb.post_mortem(exc_traceback)
+    else:
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+
+
+sys.excepthook = custom_excepthook
 
 if __name__ == "__main__":
     main()

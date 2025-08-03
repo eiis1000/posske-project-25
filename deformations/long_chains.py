@@ -75,6 +75,7 @@ class LongRangeChain:
             order = max(len(left_ords) - 1, len(right_ords) - 1)
         res = 0
         lam = left.parent().base_ring().gen()
+        assert lam != 0
         for k in range(order + 1):
             res += lam**k * LongRangeChain.bracket_at_order(left_ords, right_ords, k)
         return res
@@ -125,15 +126,16 @@ class LongRangeChain:
                 terms[d] += coeff.coefficient(d) * q.parent()(el)
         return terms
 
-    @staticmethod
-    def truncate_order(q, order):
+    def truncate_order(self, q, order=None):
+        if order is None:
+            order = self.order()
         lam = q.parent().base_ring().gen()
         return extend_to_coeffs(lambda x: x % (lam ** (order + 1)))(q)
 
     @staticmethod
     def format(q, order=None):
         if order is not None:
-            q = LongRangeChain.truncate_order(q, order)
+            q = LongRangeChain.truncate_order(None, q, order)
         terms = LongRangeChain.extract_orders(q)
         res = str(terms[0])
         for k in range(1, len(terms)):
