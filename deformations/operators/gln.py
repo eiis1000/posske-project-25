@@ -1,3 +1,4 @@
+from operator import le
 from ..algebra import GlobalOp
 from ..config import (
     perm_print_joiner,
@@ -18,15 +19,13 @@ else:
 
 @njit(cache=True)
 def is_valid_permutation(perm):
-    # if not isinstance(perm, np.ndarray):
-    #     return False
-    if len(perm) != len(set(perm)):
-        return False
     if not np.all(perm >= 0):
         return False
     if not np.all(perm < len(perm)):
         return False
-    return True
+    seen = np.zeros(len(perm), dtype=np.bool_)
+    seen[perm] = True
+    return np.all(seen)
 
 
 @njit(cache=True)
@@ -52,12 +51,16 @@ def normalize_permutation(perm):
     return perm
 
 
+@njit(cache=True)
 def reduce_permutation(perm, padding=0):
-    perm = normalize_permutation(perm)
-    nontrivial_indices = np.where(perm != np.arange(len(perm)))[0]
-    if len(nontrivial_indices) == 0:
-        return np.array([0], dtype=int), (0, len(perm) - 1 - 2 * padding)
-    offset, end = nontrivial_indices.min(), nontrivial_indices.max() + 1
+    nontrivial_indices = perm != np.arange(len(perm))
+    if not np.any(nontrivial_indices):
+        return np.array([0], dtype=np.int32), (0, len(perm) - 1 - 2 * padding)
+    offset, end = 0, len(perm)
+    while not nontrivial_indices[offset]:
+        offset += 1
+    while not nontrivial_indices[end - 1]:
+        end -= 1
     offset, end = int(offset), int(end)  # avoids sage weirdness with np.int64
     reduced = perm[offset:end]
     reduced = reduced - offset
@@ -124,6 +127,7 @@ def perm_compose_sided(left_perm, right_perm):
 
 class GLNHomogOp(GlobalOp):
     def __init__(self, perm, alg=None):
+        perm = normalize_permutation(perm)
         self.data, *_ = reduce_permutation(perm)
         self.alg = alg
 

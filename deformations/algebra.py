@@ -17,12 +17,18 @@ sa.LieAlgebraElement = LieAlgebraElement
 
 @total_ordering
 class GlobalOp(ABC):
+    _hash = None
+
     def __hash__(self):
+        if self._hash is not None:
+            return self._hash
         if isinstance(self.data, np.ndarray):
-            return hash((tuple(self.data), type(self)))
+            self._hash = hash((self.data.tobytes(), type(self)))
         elif isinstance(self.data, (list, tuple)):
-            return hash((tuple(tuple(k) for k in self.data), type(self)))
-        return hash((self.data, type(self)))
+            self._hash = hash((tuple(k.tobytes() for k in self.data), type(self)))
+        else:
+            self._hash = hash((self.data, type(self)))
+        return self._hash
 
     def __eq__(self, other):
         if not isinstance(other, type(self)):
@@ -73,7 +79,9 @@ class GlobalAlgebra(sa.IndexedGenerators, sa.LieAlgebraWithGenerators):
         self.boost = compose(self, boost)
         self.bilocalize = compose(self, bilocalize)
         self.make = compose(self, make)
-        raw_ring = sa.QQbar
+        # raw_ring = sa.QQbar
+        # self.i_ = self.raw_ring.gen()
+        raw_ring = (sa.QQ(1) * sa.I).parent()
         self.i_ = raw_ring.gen()
         ring = sa.PolynomialRing(raw_ring, "λ")
         self.ring = ring
