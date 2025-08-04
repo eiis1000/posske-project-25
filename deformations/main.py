@@ -39,9 +39,14 @@ def main():
     # BLBQ2 = bilocal_boost(Q(2))
     # print("eq. 3.34: 1/4*(", i_ * 4 * lbl(2, 3).bracket(Q(2)), ")")
 
-    lrc = LongRangeChain(chain, (3, 2))
-    # lrc = LongRangeChain(chain, (3, ))
-    lrc.ensure_order(1)
+    deform = (2, 3)  # commutation breaks at first order
+    # deform = (2, 4) # disagrees with table 2 at first order
+    deform = (2,)  # passes all tests, incl order 5 fill 4 consistency
+    # deform = (3,)  # homog breaks at fourth order
+    # deform = (4,)  # homog breaks at fourth again
+    lrc = LongRangeChain(chain, deform)
+    # lrc.ensure_order(1)
+    # lrc.ensure_order(3)
     print("Q2: ", lrc.format(lrc.Q(2)))
     print("Q3: ", lrc.format(lrc.Q(3)))
     print(
@@ -60,7 +65,7 @@ def main():
     #     " + ...",
     # )
     Q = lrc.Q
-    # breakpoint()
+    breakpoint()
 
 
 import sys

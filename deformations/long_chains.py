@@ -10,6 +10,7 @@ class LongRangeChain:
         self.charge_tower = short_range_chain.charge_tower.copy()
         self.orders = [None] + [0] * (len(self.charge_tower) - 1)
         self.deform_lam = self.deformation_lambda(deformation)
+        self.ensure_filled(max(deformation))
 
     def Q(self, k):
         assert k >= 1, "Charges are defined for k >= 1"
