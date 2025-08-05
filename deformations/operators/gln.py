@@ -55,7 +55,7 @@ def normalize_permutation(perm):
 def reduce_permutation(perm, padding=0):
     nontrivial_indices = perm != np.arange(len(perm))
     if not np.any(nontrivial_indices):
-        return np.array([0], dtype=np.int32), (0, len(perm) - 1 - 2 * padding)
+        return np.array([0], dtype=perm.dtype), (0, len(perm) - 1 - 2 * padding)
     offset, end = 0, len(perm)
     while not nontrivial_indices[offset]:
         offset += 1
@@ -142,7 +142,7 @@ class GLNHomogOp(GlobalOp):
         return GLNHomogOp.bracket_homog_homog(self, other)
 
     def selfsort_tuple(self):
-        return (len(self.data), self.data.tolist())
+        return (len(self.data), self.data.tobytes())
 
     @staticmethod
     def bracket_homog_homog(left, right):
@@ -191,7 +191,7 @@ class GLNBoostOp(GlobalOp):
         return GLNBoostOp.bracket_boost_homog(self, other)
 
     def selfsort_tuple(self):
-        return (len(self.data), self.data.tolist())
+        return (len(self.data), self.data.tobytes())
 
     @staticmethod
     def boost(other):
@@ -285,8 +285,8 @@ class GLNBilocalOp(GlobalOp):
         return (
             len(self.data[0]),
             len(self.data[1]),
-            self.data[0].tolist(),
-            self.data[1].tolist(),
+            self.data[0].tobytes(),
+            self.data[1].tobytes(),
         )
 
     @staticmethod
@@ -312,14 +312,9 @@ class GLNBilocalOp(GlobalOp):
             accum = alg.zero()
             for l, lc in left:
                 for r, rc in right:
-                    if not isinstance(l, GLNHomogOp) or not isinstance(r, GLNHomogOp):
-                        breakpoint()
                     assert isinstance(l, GLNHomogOp) and isinstance(r, GLNHomogOp)
                     lx = np.arange(left_len, dtype=int)
-                    try:
-                        lx[: len(l.data)] = l.data
-                    except:
-                        breakpoint()
+                    lx[: len(l.data)] = l.data
                     rx = np.arange(right_len, dtype=int)
                     rx[: len(r.data)] = r.data
                     accum += lc * rc * GLNBilocalOp.reduce_slashed(lx, 0, rx, 0, alg)[0]
@@ -406,6 +401,10 @@ class GLNBilocalOp(GlobalOp):
         bileft, birght = left.data
         target = right.data
         # for short, these are bl, br, tg.
+
+        # TODO CHECK IF ANTIWRAP FROM THE ORIGINAL BILOCAL IS ACTUALLY BEING HANDLED
+        # TODO CHECK SIGNS OF ANTIWRAP TERMS
+        # TODO SPLIT ANTIWRAP SUM ONTO ITS OWN
 
         alg = left.alg or right.alg
         accum_slashed = alg.zero()
