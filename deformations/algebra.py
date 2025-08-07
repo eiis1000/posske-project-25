@@ -9,10 +9,14 @@ from .tools import compose, wrap_logging
 from sage.structure.indexed_generators import IndexedGenerators
 from sage.algebras.lie_algebras.lie_algebra import LieAlgebraWithGenerators
 from sage.algebras.lie_algebras.lie_algebra_element import LieAlgebraElement
+# from sage.parallel.multiprocessing_sage import parallel_iter
+# from sage.parallel.map_reduce import RESetMapReduce
 
 sa.IndexedGenerators = IndexedGenerators
 sa.LieAlgebraWithGenerators = LieAlgebraWithGenerators
 sa.LieAlgebraElement = LieAlgebraElement
+# sa.parallel_iter = parallel_iter
+# sa.RESetMapReduce = RESetMapReduce
 
 
 @total_ordering
@@ -58,10 +62,11 @@ class GlobalOp(ABC):
     def bracket_ordered(self, other):
         pass
 
+    # TODO ADD CACHE DECORATOR
     def _bracket_(self, other):
         assert isinstance(other, GlobalOp)
         if other.sort_order() < self.sort_order():
-            return {k: -v for k, v in other.bracket_ordered(self).items()}
+            return {k: -v for k, v in other.bracket_ordered(self)}  # .items()}
         else:
             return self.bracket_ordered(other)
 
@@ -76,7 +81,7 @@ class GlobalOp(ABC):
 class GlobalAlgebra(sa.IndexedGenerators, sa.LieAlgebraWithGenerators):
     def __init__(self, boost, bilocalize, make=None):
         self.boost_term = boost
-        self.boost = compose(self, boost)
+        self.boost = compose(self, boost) if boost is not None else self.bilocal_boost
         self.bilocalize = compose(self, bilocalize)
         self.make = compose(self, make)
         # raw_ring = sa.QQbar
@@ -105,5 +110,25 @@ class GlobalAlgebra(sa.IndexedGenerators, sa.LieAlgebraWithGenerators):
             x = {x: self.ring(1)}
         return sa.LieAlgebraWithGenerators._element_constructor_(self, x)
 
+    def bilocal_boost(self, Q):
+        ones = self.make([1])
+        return (self.bilocalize(ones, Q) - self.bilocalize(Q, ones)) / 2
+
     class Element(sa.LieAlgebraElement):
+        # def _bracket_(self, other):
+        #     # left_items = {k: v for k, v in self}
+        #     # right_items = {k: v for k, v in other}
+        #     collected_items = [
+        #         (k1, k2, v1 * v2) for (k1, v1) in self for (k2, v2) in other
+        #     ]
+        #     alg = self.parent()
+        #     S = RESetMapReduce(
+        #         roots=collected_items,
+        #         children=lambda _: (),
+        #         map_function=lambda x: x[2] * alg(GlobalOp._bracket_(x[0], x[1])),
+        #         reduce_function=lambda x, y: x + y,
+        #         reduce_init=alg.zero(),
+        #     )
+        #     return S.run()
+
         pass

@@ -8,13 +8,9 @@ from .short_chains import ShortRangeChain
 
 def main():
     # definitions for repl convenience
-    def bilocal_boost(q):
-        alg = q.parent()
-        ones = alg.make([1])
-        return (alg.bilocalize(ones, q) - alg.bilocalize(q, ones)) / 2
 
     alg = GlobalAlgebra(GLNBoostOp.boost, GLNBilocalOp.bilocalize, make=make_gln)
-    # alg = GlobalAlgebra(bilocal_boost, GLNBilocalOp.bilocalize, make=make_gln)
+    # alg = GlobalAlgebra(None, GLNBilocalOp.bilocalize, make=make_gln) # bilocal boost
     i_ = alg.i_  # keep for interactive
 
     # test_perm = alg.make([1, 3, 4, 2])
@@ -41,15 +37,26 @@ def main():
     # BLBQ2 = bilocal_boost(Q(2))
     # print("eq. 3.34: 1/4*(", i_ * 4 * lbl(2, 3).bracket(Q(2)), ")")
 
-    # deform = (1, 3)  # seems to work up to at least 4th?
-    deform = (2, 3)  # commutation breaks at first order
-    # deform = (2, 4) # disagrees with table 2 at first order
-    # deform = (2,)  # passes all tests, incl order 5 fill 4 consistency
-    # deform = (3,)  # homog breaks at fourth order
-    # deform = (4,)  # homog breaks at fourth again
+    # if a test passes everything up to and incl order K fill Q, I will write
+    # "P(K;Q)". if it fails on homog, I'll write "H(K;Q)", and if it fails on
+    # algebra consistency I'll write "C(K;Q)". if it disagrees with Table 2,
+    # I'll write "T(K)" (since Q=2 always). if no ensure_filled is required for
+    # failure, I'll just write e.g. H(K), or I'll write H(K;_Q) where _Q is the
+    # charge that fails the test.
+    ## here are the boosts
+    # deform = (2,)    # P(5;4)
+    # deform = (3,)    # H(4;_2)
+    # deform = (4,)    # H(4;_2)
+    ## here are the boosts again, but this time generated bilocally
+    deform = (2, -1)  # P(5;4)
+    deform = (3, -1)  # P(5;4)?
+    ## here are the bilocals
+    # deform = (1, 3)  # P(4)
+    # deform = (2, 3)  # C(1)
+    # deform = (2, 4)  # T(1)
     lrc = LongRangeChain(chain, deform)
     # lrc.ensure_order(1)
-    # lrc.ensure_order(3)
+    lrc.ensure_order(3)
     print("Q2: ", lrc.format(lrc.Q(2)))
     print("Q3: ", lrc.format(lrc.Q(3)))
     # print("Q4: ", lrc.format(lrc.Q(4)))

@@ -4,3 +4,4 @@ enable_logging = True
 symmetric_boost_identification = True  # False
 incl_antiwrap_in_bilocal_bracket = True
 use_numba = True
+use_sage_threads = True

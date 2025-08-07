@@ -45,7 +45,7 @@ def is_reduced_permutation(perm):
 def normalize_permutation(perm):
     """Ensure the permutation is a numpy array and 0-indexed."""
     if not isinstance(perm, np.ndarray):
-        assert isinstance(perm, list) and all(isinstance(x, int) for x in perm)
+        assert isinstance(perm, list)  # and all(isinstance(x, int) for x in perm)
         perm = np.array(perm, dtype=int) - 1
     assert is_valid_permutation(perm)
     return perm
@@ -96,7 +96,8 @@ def make_gln(target, alg=None):
 
 
 def drag_right_on_left(left_perm, right_perm):
-    padding = len(right_perm) + 1  # extra padding for fun :)
+    # padding = len(right_perm) + 1  # extra padding for fun :)
+    padding = len(right_perm)
     # padding = len(right_perm) - 1
     left_padded = pad_permutation(left_perm, padding)
     full_size = len(left_padded)
@@ -206,6 +207,7 @@ class GLNBoostOp(GlobalOp):
 
     @staticmethod
     def reduce(perm, padding, alg):
+        # TODO check if it's possible to reduce boosts of disjoint permutations
         ring = alg.base()
         perm = normalize_permutation(perm)
         perm_squeezed = perm[padding : len(perm) - padding] - padding
@@ -314,9 +316,11 @@ class GLNBilocalOp(GlobalOp):
                 for r, rc in right:
                     assert isinstance(l, GLNHomogOp) and isinstance(r, GLNHomogOp)
                     lx = np.arange(left_len, dtype=int)
-                    lx[: len(l.data)] = l.data
                     rx = np.arange(right_len, dtype=int)
-                    rx[: len(r.data)] = r.data
+                    if len(l.data):
+                        lx[: len(l.data)] = l.data
+                    if len(r.data):
+                        rx[: len(r.data)] = r.data
                     accum += lc * rc * GLNBilocalOp.reduce_slashed(lx, 0, rx, 0, alg)[0]
             return accum
 

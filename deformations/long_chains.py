@@ -57,6 +57,10 @@ class LongRangeChain:
             (k,) = deformation
             self.ensure_filled(k)
             return lambda self: self.alg.boost(self.Q(k))
+        elif len(deformation) == 2 and deformation[1] == -1:
+            k, _ = deformation
+            self.ensure_filled(k)
+            return lambda self: self.alg.bilocal_boost(self.Q(k))
         elif len(deformation) == 2:
             k, l = deformation
             self.ensure_filled(k)
