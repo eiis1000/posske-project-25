@@ -22,6 +22,16 @@ def extend_bilinear(fn):
     return lambda left, right: xtl(lambda l: xtl(lambda r: fn(l, r))(right))(left)
 
 
+def map_collect_elements(input, item_map, zero=0):
+    if isinstance(input, dict):
+        input = [(k, v) for (k, v) in input.items()]
+    output = {}
+    for k, v in input:
+        mapped_k, mapped_v = item_map(k, v)
+        output[mapped_k] = output.get(mapped_k, zero) + mapped_v
+    return output
+
+
 def comm(a, b):
     return a.bracket(b) if hasattr(a, "bracket") else a * b - b * a
 

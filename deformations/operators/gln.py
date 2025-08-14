@@ -6,7 +6,7 @@ from ..config import (
     incl_antiwrap_in_bilocal_bracket,
     use_numba,
 )
-from ..tools import extend_linear, AccumWrapper
+from ..tools import extend_linear, map_collect_elements, AccumWrapper
 
 import numpy as np
 import sage.all as sa
@@ -151,12 +151,10 @@ class GLNHomogOp(GlobalOp):
         dragged, _ = drag_right_on_left(left_perm, right_perm)
 
         alg = left.alg or right.alg
-        final = alg.zero()
-        for sg_el, coeff in dragged:
-            assert coeff != 0
-            perm = list(sg_el.tuple())
-            perm_promoted = alg(GLNHomogOp(perm))
-            final += coeff * perm_promoted
+        final_dict = map_collect_elements(
+            dragged, lambda k, v: (GLNHomogOp(list(k.tuple())), v), alg.base().zero()
+        )
+        final = alg(final_dict) if final_dict else alg.zero()
 
         return final
 
@@ -217,8 +215,6 @@ class GLNBoostOp(GlobalOp):
             perm_reduced, legs = reduce_permutation(perm, padding=padding)
             left_legs, right_legs = legs
             left_legs, right_legs = ring(left_legs), ring(right_legs)
-            accum = alg.zero()
-            accum += alg(GLNBoostOp(perm_reduced))
             if symmetric_boost_identification:
                 # the asymmetric identification is, IMO, much more intuitive,
                 # but this is the one that matches eq. (3.20) in the paper
@@ -226,9 +222,12 @@ class GLNBoostOp(GlobalOp):
                     (left_legs - right_legs) / 2,
                     (right_legs - left_legs) / 2,
                 )
-            accum -= left_legs * alg(GLNHomogOp(perm_reduced))
-            accum -= right_legs * alg(GLNHomogOp([1]))
-            return accum
+            accum_list = [
+                (GLNBoostOp(perm_reduced), 1),
+                (GLNHomogOp(perm_reduced), -left_legs),
+                (GLNHomogOp([1]), -right_legs),
+            ]
+            return accum_list
 
     @staticmethod
     def bracket_boost_homog(left, right):
@@ -239,11 +238,19 @@ class GLNBoostOp(GlobalOp):
         dragged, padding = drag_right_on_left(left_perm, right_perm)
 
         alg = left.alg or right.alg
-        final = alg.zero()
+        final_list = []
         for sg_el, coeff in dragged:
-            final += coeff * GLNBoostOp.reduce(list(sg_el.tuple()), padding, alg)
+            final_list.extend(
+                [
+                    (k, v * coeff)
+                    for (k, v) in GLNBoostOp.reduce(list(sg_el.tuple()), padding, alg)
+                ]
+            )
+        final_dict = map_collect_elements(
+            final_list, lambda k, v: (k, v), alg.base().zero()
+        )
 
-        return final
+        return alg(final_dict) if final_dict else alg.zero()
 
 
 class GLNBilocalOp(GlobalOp):
@@ -354,6 +361,7 @@ class GLNBilocalOp(GlobalOp):
         left_hom, rght_hom = GLNHomogOp(left_red), GLNHomogOp(rght_red)
         primary = GLNBilocalOp(left_red, rght_red)
 
+        # TODO speed up this method and the bracket both using map_collect_elements
         accum = alg.zero()
         # accum = AccumWrapper(accum)
         accum += alg(primary)
