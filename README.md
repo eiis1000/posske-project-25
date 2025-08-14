@@ -1,1 +1,1 @@
-Run via `python run_deformations.py` in a virtual environment with SageMath 10.x (tested on 10.6).
+Run via `python run_deformations.py` in a virtual environment with SageMath 10.x (tested on 10.6) and numba. A consistent way to do this is to install `nix-shell` then use `nix-shell --run "sage --python run_deformations.py"`
