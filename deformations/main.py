@@ -44,12 +44,12 @@ def main():
     # failure, I'll just write e.g. H(K), or I'll write H(K;_Q) where _Q is the
     # charge that fails the test.
     ## here are the boosts
-    # deform = (2,)    # P(5;4)
+    # deform = (2,)    # P(5;4), consistency too slow
     # deform = (3,)    # H(4;_2)
     # deform = (4,)    # H(4;_2)
     ## here are the boosts again, but this time generated bilocally
     deform = (2, -1)  # P(5;4)
-    deform = (3, -1)  # P(5;4)?
+    deform = (3, -1)  # P(5;4), consistency too slow
     ## here are the bilocals
     # deform = (1, 3)  # P(4)
     # deform = (2, 3)  # C(1)

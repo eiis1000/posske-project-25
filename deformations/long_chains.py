@@ -45,29 +45,30 @@ class LongRangeChain:
         self.charge_tower[q] = cur_charge + extend_to_coeffs(
             lambda x: (x * self.deform_param ** (k - 1)).integral()
         )(self.i_ * self.bracket_at_order(gen, cur_charge, k - 1))
-        assert self.homogeneity(q)
+        if not self.homogeneity(q):
+            raise ValueError(
+                f"Homogeneity check failed for charge {q} at order {k}. "
+                "This may indicate an inconsistency in the algebra. "
+                f"Q_{q} string starts with {str(self.charge_tower[q])[:200]}..."
+            )
         self.orders[q] = k
 
     def deformation_lambda(self, deformation):
-        if callable(deformation):
-            return deformation
-        assert isinstance(deformation, tuple)
-        assert isinstance(deformation[0], int)
-        if len(deformation) == 1:
-            (k,) = deformation
-            self.ensure_filled(k)
-            return lambda self: self.alg.boost(self.Q(k))
-        elif len(deformation) == 2 and deformation[1] == -1:
-            k, _ = deformation
-            self.ensure_filled(k)
-            return lambda self: self.alg.bilocal_boost(self.Q(k))
-        elif len(deformation) == 2:
-            k, l = deformation
-            self.ensure_filled(k)
-            self.ensure_filled(l)
-            return lambda self: self.alg.bilocalize(self.Q(k), self.Q(l))
-        else:
-            raise NotImplementedError()
+        match deformation:
+            case f if callable(f):
+                return f
+            case (k,) if isinstance(k, int):
+                self.ensure_filled(k)
+                return lambda self: self.alg.boost(self.Q(k))
+            case (k, -1) if isinstance(k, int):
+                self.ensure_filled(k)
+                return lambda self: self.alg.bilocal_boost(self.Q(k))
+            case (k, l) if isinstance(k, int) and isinstance(l, int):
+                self.ensure_filled(k)
+                self.ensure_filled(l)
+                return lambda self: self.alg.bilocalize(self.Q(k), self.Q(l))
+            case _:
+                raise NotImplementedError()
 
     def deform_gen(self):
         return self.deform_lam(self)
@@ -117,6 +118,10 @@ class LongRangeChain:
             for r in range(2, q):
                 bracket = self.bracket_to_order(self.Q(q), self.Q(r), self.order())
                 if bracket != 0:
+                    print(
+                        f"Algebra inconsistency at order {self.order()}: "
+                        f"[Q{q}, Q{r}] = {str(bracket)[50:]}... != 0"
+                    )
                     return False
         return True
 

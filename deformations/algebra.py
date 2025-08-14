@@ -18,6 +18,8 @@ sa.LieAlgebraElement = LieAlgebraElement
 # sa.parallel_iter = parallel_iter
 # sa.RESetMapReduce = RESetMapReduce
 
+_bracket_cache = {}
+
 
 @total_ordering
 class GlobalOp(ABC):
@@ -62,13 +64,20 @@ class GlobalOp(ABC):
     def bracket_ordered(self, other):
         pass
 
-    # TODO ADD CACHE DECORATOR
+    def bracket_ordered_cached(self, other):
+        cache_key = (hash(self), hash(other))
+        if cache_key in _bracket_cache:
+            return _bracket_cache[cache_key]
+        result = self.bracket_ordered(other)
+        _bracket_cache[cache_key] = result
+        return result
+
     def _bracket_(self, other):
         assert isinstance(other, GlobalOp)
         if other.sort_order() < self.sort_order():
-            return {k: -v for k, v in other.bracket_ordered(self)}  # .items()}
+            return {k: -v for k, v in other.bracket_ordered_cached(self)}
         else:
-            return self.bracket_ordered(other)
+            return self.bracket_ordered_cached(other)
 
     def sort_order(self):
         return (-self.hardness(), *self.selfsort_tuple())
