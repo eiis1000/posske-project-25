@@ -11,6 +11,11 @@ from ..tools import extend_linear, map_collect_elements, AccumWrapper
 import numpy as np
 import sage.all as sa
 
+try:
+    from line_profiler import profile
+except ImportError:
+    profile = lambda *_, **__: lambda fn: fn
+
 if use_numba:
     from numba import njit
 else:
@@ -328,7 +333,15 @@ class GLNBilocalOp(GlobalOp):
                         lx[: len(l.data)] = l.data
                     if len(r.data):
                         rx[: len(r.data)] = r.data
-                    accum += lc * rc * GLNBilocalOp.reduce_slashed(lx, 0, rx, 0, alg)[0]
+                    reduced_slashed_list = GLNBilocalOp.reduce_slashed(
+                        lx, 0, rx, 0, alg
+                    )[0]
+                    reduced_slashed = map_collect_elements(
+                        reduced_slashed_list,
+                        lambda k, v: (k, v),
+                        alg.base().zero(),
+                    )
+                    accum += lc * rc * alg(reduced_slashed)
             return accum
 
         else:
@@ -361,51 +374,67 @@ class GLNBilocalOp(GlobalOp):
         left_hom, rght_hom = GLNHomogOp(left_red), GLNHomogOp(rght_red)
         primary = GLNBilocalOp(left_red, rght_red)
 
-        # TODO speed up this method and the bracket both using map_collect_elements
-        accum = alg.zero()
+        accum = []
         # accum = AccumWrapper(accum)
-        accum += alg(primary)
-        accum -= ll_legs * left_hom.vacuum_ev() * alg(rght_hom)
-        accum -= rr_legs * rght_hom.vacuum_ev() * alg(left_hom)
-        accum = GLNBilocalOp.reduce_slashed_recurse(
-            left_red, ll_legs, rght_red, rl_legs, accum
+        # accum += alg(primary)
+        # accum -= ll_legs * left_hom.vacuum_ev() * alg(rght_hom)
+        # accum -= rr_legs * rght_hom.vacuum_ev() * alg(left_hom)
+        accum.append((primary, 1))
+        accum.append((rght_hom, -ll_legs * left_hom.vacuum_ev()))
+        accum.append((left_hom, -rr_legs * rght_hom.vacuum_ev()))
+        half = alg.base().one() / 2
+        # the below updates accum
+        GLNBilocalOp.reduce_slashed_recurse(
+            left_red, ll_legs, rght_red, rl_legs, accum, half
         )
         # note that lr isn't used because I think it's only on boundary.
 
         accum = accum._wrapped if isinstance(accum, AccumWrapper) else accum
+
+        # accum = map_collect_elements(accum, lambda k, v: (alg(k), v), alg.base().zero())
+
         return accum, primary
 
     @staticmethod
-    def reduce_slashed_recurse(l_red, ll_legs, r_red, rl_legs, accum):
-        alg = accum.parent()
+    def reduce_slashed_recurse(l_red, ll_legs, r_red, rl_legs, accum, half):
         if rl_legs > 0:
             comms = perm_compose_sided(l_red, pad_permutation(r_red, rl_legs))
-            accum -= GLNBilocalOp.antiwrap(comms, alg)
+            # accum -= GLNBilocalOp.antiwrap(comms, alg)
+            accum.append((GLNHomogOp(comms[0]), -half))
+            accum.append((GLNHomogOp(comms[1]), -half))
             return GLNBilocalOp.reduce_slashed_recurse(
-                l_red, ll_legs, r_red, rl_legs - 1, accum
+                l_red, ll_legs, r_red, rl_legs - 1, accum, half
             )
         elif rl_legs < 0:
             comms = perm_compose_sided(l_red, r_red)
-            accum += GLNBilocalOp.antiwrap(comms, alg)
+            # accum += GLNBilocalOp.antiwrap(comms, alg)
+            accum.append((GLNHomogOp(comms[0]), half))
+            accum.append((GLNHomogOp(comms[1]), half))
             return GLNBilocalOp.reduce_slashed_recurse(
-                l_red, ll_legs, pad_permutation(r_red, 1), rl_legs + 1, accum
+                l_red, ll_legs, pad_permutation(r_red, 1), rl_legs + 1, accum, half
             )
         elif ll_legs > 0:
             comms = perm_compose_sided(l_red, r_red)
-            accum += GLNBilocalOp.antiwrap(comms, alg)
+            # accum += GLNBilocalOp.antiwrap(comms, alg)
+            accum.append((GLNHomogOp(comms[0]), half))
+            accum.append((GLNHomogOp(comms[1]), half))
             return GLNBilocalOp.reduce_slashed_recurse(
-                pad_permutation(l_red, 1), ll_legs - 1, r_red, rl_legs, accum
+                pad_permutation(l_red, 1), ll_legs - 1, r_red, rl_legs, accum, half
             )
         elif ll_legs < 0:
             comms = perm_compose_sided(l_red, pad_permutation(r_red, -ll_legs))
-            accum -= GLNBilocalOp.antiwrap(comms, alg)
+            # accum -= GLNBilocalOp.antiwrap(comms, alg)
+            accum.append((GLNHomogOp(comms[0]), -half))
+            accum.append((GLNHomogOp(comms[1]), -half))
+            # XXX copilot wanted to put something here but I don't know why
             return GLNBilocalOp.reduce_slashed_recurse(
-                l_red, ll_legs + 1, r_red, rl_legs, accum
+                l_red, ll_legs + 1, r_red, rl_legs, accum, half
             )
         else:
             return accum
 
     @staticmethod
+    @profile
     def bracket_bilocal_homog(left, right):
         # it's possible that all the antiwrap terms will in general cancel out
         # in this method, but I haven't proved that it's true and it seems easy
@@ -416,22 +445,24 @@ class GLNBilocalOp(GlobalOp):
 
         # TODO CHECK IF ANTIWRAP FROM THE ORIGINAL BILOCAL IS ACTUALLY BEING HANDLED
         # TODO CHECK SIGNS OF ANTIWRAP TERMS
-        # TODO SPLIT ANTIWRAP SUM ONTO ITS OWN
 
         alg = left.alg or right.alg
-        accum_slashed = alg.zero()
-        accum_antiwrap = alg.zero()
+        accum_slashed = []
+        accum_antiwrap = []
         br_tg_drag, br_tg_pad = drag_right_on_left(birght, target)
         for sg_el, coeff in br_tg_drag:
             br_tg_perm = list(sg_el.tuple())
             reduced, primary = GLNBilocalOp.reduce_slashed(
                 bileft, 0, br_tg_perm, br_tg_pad, alg
             )
-            accum_slashed += coeff * reduced
+            # accum_slashed += coeff * reduced
+            accum_slashed.extend([(k, v * coeff) for (k, v) in reduced])
 
             red_left, red_rght = primary.data
             red_comms = perm_compose_sided(red_left, red_rght)
-            accum_antiwrap -= coeff * GLNBilocalOp.antiwrap(red_comms, alg) / 2
+            # accum_antiwrap -= coeff * GLNBilocalOp.antiwrap(red_comms, alg) / 2
+            accum_antiwrap.append((GLNHomogOp(red_comms[0]), -coeff / 4))
+            accum_antiwrap.append((GLNHomogOp(red_comms[1]), -coeff / 4))
 
         bl_tg_drag, bl_tg_pad = drag_right_on_left(bileft, target)
         for sg_el, coeff in bl_tg_drag:
@@ -439,23 +470,38 @@ class GLNBilocalOp(GlobalOp):
             reduced, primary = GLNBilocalOp.reduce_slashed(
                 bl_tg_perm, bl_tg_pad, birght, 0, alg
             )
-            accum_slashed += coeff * reduced
+            # accum_slashed += coeff * reduced
+            accum_slashed.extend([(k, v * coeff) for (k, v) in reduced])
 
             red_left, red_rght = primary.data
             red_comms = perm_compose_sided(red_left, red_rght)
-            accum_antiwrap -= coeff * GLNBilocalOp.antiwrap(red_comms, alg) / 2
+            # accum_antiwrap -= coeff * GLNBilocalOp.antiwrap(red_comms, alg) / 2
+            accum_antiwrap.append((GLNHomogOp(red_comms[0]), -coeff / 4))
+            accum_antiwrap.append((GLNHomogOp(red_comms[1]), -coeff / 4))
 
         bl_br_comms = perm_compose_sided(bileft, birght)
-        accum_antiwrap += (
-            GLNBilocalOp.antiwrap(bl_br_comms, alg).bracket(alg(right)) / 2
+        # accum_antiwrap += (
+        #     GLNBilocalOp.antiwrap(bl_br_comms, alg).bracket(alg(right)) / 2
+        # )
+        accum_antiwrap.append((GLNHomogOp(bl_br_comms[0]), alg.base().one() / 2))
+        accum_antiwrap.append((GLNHomogOp(bl_br_comms[1]), alg.base().one() / 2))
+
+        accum_slashed = alg(
+            map_collect_elements(
+                accum_slashed,
+                lambda k, v: (k, v),
+                alg.base().zero(),
+            )
         )
-
-        if not incl_antiwrap_in_bilocal_bracket:
+        if incl_antiwrap_in_bilocal_bracket:
+            accum_antiwrap = alg(
+                map_collect_elements(
+                    accum_antiwrap,
+                    lambda k, v: (k, v),
+                    alg.base().zero(),
+                )
+            )
+        else:
             accum_antiwrap = 0
-        return accum_slashed + accum_antiwrap
 
-    @staticmethod
-    def antiwrap(comms, alg):
-        lr = alg(GLNHomogOp(comms[0]))
-        rl = alg(GLNHomogOp(comms[1]))
-        return (lr + rl) / 2
+        return accum_slashed + accum_antiwrap
