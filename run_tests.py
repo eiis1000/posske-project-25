@@ -1,8 +1,14 @@
 from deformations.algebra import GlobalAlgebra
 from deformations.long_chains import LongRangeChain
-from deformations.operators.gln import make_gln, GLNBoostOp, GLNBilocalOp
+from deformations.operators.gln import (
+    make_gln,
+    GLNBoostOp,
+    GLNBilocalOp,
+    reduce_permutation,
+)
 from deformations.short_chains import ShortRangeChain
 import time
+import numpy as np
 
 
 def run_test(deform, max_order, max_q, skip_last_consistency=False):
@@ -45,7 +51,7 @@ def run_test(deform, max_order, max_q, skip_last_consistency=False):
     print(f"Elapsed: {time.perf_counter() - start_time:.2f}s\n")
 
 
-if __name__ == "__main__":
+def deformation_tests():
     print("Starting deformation tests...")
 
     tests = [
@@ -54,7 +60,8 @@ if __name__ == "__main__":
         ((3,), 4, 2),  # fails
         # ((4,), 4, 2),  # if prev fails this almost certainly does too
         ((2, -1), 5, 4),
-        ((3, -1), 5, 4),
+        ((3, -1), 4, 4),  # slow
+        # ((3, -1), 5, 4),  # very slow
         ((1, 3), 3, 4),
         ((1, 3), 4, 2),
         ((2, 3), 1, 2),  # both fail
@@ -62,10 +69,52 @@ if __name__ == "__main__":
     ]
 
     speedy = True
-    # speedy = False
+    speedy = False
     for test in tests:
         if speedy:
             test = (test[0], max(1, test[1] - 1), 3)  # , True)
         run_test(*test)
 
     print("All deformation tests completed.")
+    return True
+
+
+def jacobi(a, b, c):
+    return a.bracket(b.bracket(c)) + b.bracket(c.bracket(a)) + c.bracket(a.bracket(b))
+
+
+def jacobi_tests():
+    try:
+        alg = GlobalAlgebra(GLNBoostOp.boost, GLNBilocalOp.bilocalize, make=make_gln)
+        maxlen = 3
+        for i in range(100):
+            np.random.seed(i)
+            lens = np.random.randint(1, maxlen + 1, 5)
+            perms = [
+                (reduce_permutation(np.random.permutation(k))[0] + 1).tolist()
+                for k in lens
+            ]
+            h1 = alg.make(perms[0])
+            h2 = alg.make(perms[1])
+            boosted = alg.make((perms[2],))
+            bilocaled = alg.make((perms[3], perms[4]))
+            boost_jacobi = jacobi(h1, h2, boosted)
+            assert boost_jacobi == alg.zero(), (
+                f"Jacobi test {i} failed for {h1}, {h2}, {boosted}: {boost_jacobi}"
+            )
+            bilocal_jacobi = jacobi(h1, h2, bilocaled)
+            assert bilocal_jacobi == alg.zero(), (
+                f"Jacobi test {i} failed for {h1}, {h2}, {bilocaled}: {bilocal_jacobi}"
+            )
+
+    except Exception as e:
+        print(f"Jacobi test {i} failed with exception:")
+        raise e
+
+    print("All Jacobi tests passed.")
+    return
+
+
+if __name__ == "__main__":
+    jacobi_tests()
+    deformation_tests()

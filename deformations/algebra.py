@@ -117,6 +117,9 @@ class GlobalAlgebra(sa.IndexedGenerators, sa.LieAlgebraWithGenerators):
         if isinstance(x, GlobalOp):
             x.alg = self
             x = {x: self.ring(1)}
+        for k in tuple(x.keys()):
+            if x[k] == 0:
+                del x[k]
         return sa.LieAlgebraWithGenerators._element_constructor_(self, x)
 
     def bilocal_boost(self, Q):

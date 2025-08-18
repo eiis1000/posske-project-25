@@ -86,18 +86,21 @@ def repr_permutation(perm):
 
 def make_gln(target, alg=None):
     # convenience method
-    if isinstance(target, list):
+    if isinstance(target, list) or isinstance(target, np.ndarray):
         return GLNHomogOp(target, alg=alg)
-    elif isinstance(target, set):
-        assert len(target) == 1
-        l = target.pop()
-        assert isinstance(l, list)
-        return GLNBoostOp(l, alg=alg)
     elif isinstance(target, tuple):
-        assert len(target) == 2
-        l, r = target
-        assert isinstance(l, list) and isinstance(r, list)
-        return GLNBilocalOp(l, r, alg=alg)
+        if len(target) == 1:
+            (l,) = target
+            return GLNBoostOp(l, alg=alg)
+        elif len(target) == 2:
+            l, r = target
+            return GLNBilocalOp(l, r, alg=alg)
+        else:
+            raise ValueError(f"Invalid target {target} for make_gln")
+    else:
+        raise TypeError(
+            f"Invalid type {type(target)} for make_gln, expected list or tuple"
+        )
 
 
 def drag_right_on_left(left_perm, right_perm):
@@ -348,6 +351,7 @@ class GLNBilocalOp(GlobalOp):
             raise NotImplementedError("Bilocalization for " + type(left))
 
     @staticmethod
+    @profile
     def reduce_slashed(left, lpad, rght, rpad, alg):
         r"""
         [A/B]&=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{A_a, B_b}
@@ -396,6 +400,7 @@ class GLNBilocalOp(GlobalOp):
         return accum, primary
 
     @staticmethod
+    @profile
     def reduce_slashed_recurse(l_red, ll_legs, r_red, rl_legs, accum, half):
         if rl_legs > 0:
             comms = perm_compose_sided(l_red, pad_permutation(r_red, rl_legs))

@@ -19,9 +19,10 @@ pkgs.mkShell {
     pkgs.python313Packages.numba
     # pkgs.python313Packages.numbaWithCuda
     my-overrides.line_profiler
+    pkgs.python313Packages.virtualenv
   ];
 
   shellHook = ''
-    sage --pip install -q numba line_profiler
+    sage --pip install -q numba line_profiler virtualenv
   '';
 }
