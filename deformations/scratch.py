@@ -48,15 +48,15 @@ def main():
     # deform = (3,)    # H(4;_2)
     # deform = (4,)    # H(4;_2)
     ## here are the boosts again, but this time generated bilocally
-    deform = (2, -1)  # P(5;4)
-    deform = (3, -1)  # P(5;4), consistency too slow
+    # deform = (2, -1)  # P(5;4)
+    # deform = (3, -1)  # P(5;4), consistency too slow
     ## here are the bilocals
     # deform = (1, 3)  # P(4)
-    # deform = (2, 3)  # C(1)
+    deform = (2, 3)  # C(1)
     # deform = (2, 4)  # T(1)
     lrc = LongRangeChain(chain, deform)
-    # lrc.ensure_order(1)
-    lrc.ensure_order(3)
+    lrc.ensure_order(1)
+    # lrc.ensure_order(3)
     print("Q2: ", lrc.format(lrc.Q(2)))
     print("Q3: ", lrc.format(lrc.Q(3)))
     # print("Q4: ", lrc.format(lrc.Q(4)))

@@ -1,1 +1,1 @@
-Run via `python run_deformations.py` in a virtual environment with SageMath 10.x (tested on 10.6) and numba. A consistent way to do this is to install `nix-shell` then use `nix-shell --run "sage --python run_deformations.py"`
+Run via `python run_deformations.py` in a virtual environment with SageMath 10.x (tested on 10.6) and numba. A consistent way to do this is to install `nix-shell` then use `nix-shell --run "sage --python run_deformations.py"`. Profiling also works via e.g. `nix-shell --run "sage --python -m kernprof -lv run_tests.py"`.

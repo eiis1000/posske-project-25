@@ -1,3 +1,3 @@
-from deformations.main import main
+from deformations.scratch import main
 
 main()

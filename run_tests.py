@@ -49,22 +49,20 @@ if __name__ == "__main__":
     print("Starting deformation tests...")
 
     tests = [
-        ((2,), 5, 4, True),
+        ((2,), 5, 4),
         ((3,), 3, 2),
-        # ((3,), 4, 2), # fails
-        # ((4,), 4, 2), # if prev fails this almost certainly does too
-        ((4,), 2, 2),
-        ((2, -1), 4, 4),
-        # ((2, -1), 5, 4),
-        ((3, -1), 3, 4, True),
-        # ((3, -1), 5, 4, True),
+        ((3,), 4, 2),  # fails
+        # ((4,), 4, 2),  # if prev fails this almost certainly does too
+        ((2, -1), 5, 4),
+        ((3, -1), 5, 4),
         ((1, 3), 3, 4),
         ((1, 3), 4, 2),
-        # ((2, 3), 1, 2), # both fail
-        # ((2, 4), 1, 2),
+        ((2, 3), 1, 2),  # both fail
+        ((2, 4), 1, 2),
     ]
 
     speedy = True
+    # speedy = False
     for test in tests:
         if speedy:
             test = (test[0], max(1, test[1] - 1), 3)  # , True)

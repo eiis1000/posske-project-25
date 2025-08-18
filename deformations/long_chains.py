@@ -47,6 +47,8 @@ class LongRangeChain:
         )(self.i_ * self.bracket_at_order(gen, cur_charge, k - 1))
         if not self.homogeneity(q):
             raise ValueError(
+                # print(
+                #     "SUPPRESSING ERROR: "
                 f"Homogeneity check failed for charge {q} at order {k}. "
                 "This may indicate an inconsistency in the algebra. "
                 f"Q_{q} string starts with {str(self.charge_tower[q])[:200]}..."
