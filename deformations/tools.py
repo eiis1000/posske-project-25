@@ -1,5 +1,10 @@
 from .config import enable_logging
 
+try:
+    from line_profiler import profile
+except ImportError:
+    profile = lambda *_, **__: lambda fn: fn
+
 
 def extend_linear(fn):
     return (
@@ -22,7 +27,8 @@ def extend_bilinear(fn):
     return lambda left, right: xtl(lambda l: xtl(lambda r: fn(l, r))(right))(left)
 
 
-def map_elements(input, fn, item_map=lambda x: x):
+@profile
+def map_elements(input, fn, item_map):
     if isinstance(input, dict):
         input = input.items()
     for k, v in input:
@@ -32,7 +38,8 @@ def map_elements(input, fn, item_map=lambda x: x):
         fn((mapped_k, mapped_v))
 
 
-def map_collect_elements(input, item_map=lambda x: x, zero=0):
+@profile
+def map_collect_elements(input, item_map, zero=0):
     output = {}
 
     def update(kv):

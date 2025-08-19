@@ -1,3 +1,4 @@
+import stat
 from operator import le
 
 import numpy as np
@@ -57,7 +58,7 @@ def normalize_permutation(perm):
     """Ensure the permutation is a numpy array and 0-indexed."""
     if not isinstance(perm, np.ndarray):
         assert isinstance(perm, list)  # and all(isinstance(x, int) for x in perm)
-        perm = np.array(perm, dtype=int) - 1
+        perm = np.array(perm, dtype=np.int32) - 1
     assert is_valid_permutation(perm)
     return perm
 
@@ -66,7 +67,7 @@ def normalize_permutation(perm):
 def reduce_permutation(perm, padding=0):
     nontrivial_indices = perm != np.arange(len(perm))
     if not np.any(nontrivial_indices):
-        return np.array([0], dtype=perm.dtype), (0, len(perm) - 1 - 2 * padding)
+        return np.array([0], dtype=np.int32), (0, len(perm) - 1 - 2 * padding)
     offset, end = 0, len(perm)
     while not nontrivial_indices[offset]:
         offset += 1
@@ -74,13 +75,14 @@ def reduce_permutation(perm, padding=0):
         end -= 1
     offset, end = int(offset), int(end)  # avoids sage weirdness with np.int64
     reduced = perm[offset:end]
-    reduced = reduced - offset
+    reduced = reduced.astype(np.int32)  # copies as well
+    reduced -= offset
     assert is_valid_permutation(reduced)
     return reduced, (offset - padding, len(perm) - end - padding)
 
 
 def pad_permutation(perm, padding):
-    larger_perm = np.arange(len(perm) + 2 * padding, dtype=int)
+    larger_perm = np.arange(len(perm) + 2 * padding, dtype=np.int32)
     larger_perm[padding : len(larger_perm) - padding] = perm + padding
     return larger_perm
 
@@ -130,13 +132,21 @@ def drag_right_on_left(left_perm, right_perm):
     return accum, padding
 
 
+@njit(cache=True)
 def perm_compose_sided(left_perm, right_perm):
     assert is_valid_permutation(left_perm)
     assert is_valid_permutation(right_perm)
-    sg = sa.SymmetricGroup(max(len(left_perm), len(right_perm)))
-    left, right = sg((left_perm + 1).tolist()), sg((right_perm + 1).tolist())
-    lr = list((left * right).tuple())
-    rl = list((right * left).tuple())
+    # sg = sa.SymmetricGroup(max(len(left_perm), len(right_perm)))
+    # left, right = sg((left_perm + 1).tolist()), sg((right_perm + 1).tolist())
+    # lr = list((left * right).tuple())
+    # rl = list((right * left).tuple())
+    max_len = max(len(left_perm), len(right_perm))
+    identity = np.arange(max_len, dtype=np.int32)
+    left, right = identity.copy(), identity.copy()
+    left[: len(left_perm)] = left_perm
+    right[: len(right_perm)] = right_perm
+    lr = left[right]
+    rl = right[left]
     return lr, rl
 
 
@@ -454,6 +464,15 @@ class GLNBilocalOp(GlobalOp):
 
     @staticmethod
     @profile
+    def append_antiwrap_proto(l, r, coeff, op, alg):
+        half_coeff = (alg.base().one() / 2) * coeff
+        comms = perm_compose_sided(l, r)
+        for ix in [0, 1]:
+            cur = GLNHomogOp(comms[ix], alg=alg)
+            op((cur, half_coeff))
+
+    @staticmethod
+    @profile
     def bracket_bilocal_homog(left, right):
         # it's possible that all the antiwrap terms will in general cancel out
         # in this method, but I haven't proved that it's true and it seems easy
@@ -469,11 +488,8 @@ class GLNBilocalOp(GlobalOp):
         accum_slashed = []
         accum_antiwrap = []
 
-        def append_antiwrap(l, r, coeff, op):
-            half_coeff = (alg.base().one() / 2) * coeff
-            comms = perm_compose_sided(l, r)
-            for ix in [0, 1]:
-                op((GLNHomogOp(comms[ix], alg=alg), half_coeff))
+        def append_antiwrap(left, right, coeff, op):
+            GLNBilocalOp.append_antiwrap_proto(left, right, coeff, op, alg)
 
         br_tg_drag, br_tg_pad = drag_right_on_left(birght, target)
         for sg_el, coeff in br_tg_drag:
