@@ -6,7 +6,12 @@ from ..config import (
     incl_antiwrap_in_bilocal_bracket,
     use_numba,
 )
-from ..tools import extend_linear, map_collect_elements, AccumWrapper
+from ..tools import (
+    extend_linear,
+    map_elements,
+    map_collect_elements,
+    AccumWrapper,
+)
 
 import numpy as np
 import sage.all as sa
@@ -162,8 +167,8 @@ class GLNHomogOp(GlobalOp):
         final_dict = map_collect_elements(
             dragged, lambda k, v: (GLNHomogOp(list(k.tuple())), v), alg.base().zero()
         )
-        final = alg(final_dict) if final_dict else alg.zero()
 
+        final = alg(final_dict)
         return final
 
     def vacuum_ev(self):
@@ -488,10 +493,16 @@ class GLNBilocalOp(GlobalOp):
         # accum_antiwrap += (
         #     GLNBilocalOp.antiwrap(bl_br_comms, alg).bracket(alg(right)) / 2
         # )
-        accum_antiwrap.append((GLNHomogOp(bl_br_comms[0]), alg.base().one() / 2))
-        accum_antiwrap.append((GLNHomogOp(bl_br_comms[1]), alg.base().one() / 2))
+        quarter = alg.base().one() / 4
+        for ix in [0, 1]:
+            cur = GLNHomogOp(bl_br_comms[ix]).bracket(right)
+            map_elements(
+                cur,
+                accum_antiwrap.append,
+                lambda k, v: (k, v * quarter),
+            )
 
-        accum_slashed = alg(
+        accum_sl = alg(
             map_collect_elements(
                 accum_slashed,
                 lambda k, v: (k, v),
@@ -499,7 +510,7 @@ class GLNBilocalOp(GlobalOp):
             )
         )
         if incl_antiwrap_in_bilocal_bracket:
-            accum_antiwrap = alg(
+            accum_aw = alg(
                 map_collect_elements(
                     accum_antiwrap,
                     lambda k, v: (k, v),
@@ -507,6 +518,6 @@ class GLNBilocalOp(GlobalOp):
                 )
             )
         else:
-            accum_antiwrap = 0
+            accum_aw = 0
 
-        return accum_slashed + accum_antiwrap
+        return accum_sl + accum_aw

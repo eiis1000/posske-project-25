@@ -22,13 +22,24 @@ def extend_bilinear(fn):
     return lambda left, right: xtl(lambda l: xtl(lambda r: fn(l, r))(right))(left)
 
 
-def map_collect_elements(input, item_map=lambda x: x, zero=0):
+def map_elements(input, fn, item_map=lambda x: x):
     if isinstance(input, dict):
-        input = [(k, v) for (k, v) in input.items()]
-    output = {}
+        input = input.items()
     for k, v in input:
+        if hasattr(k, "is_zero") and k.is_zero():
+            continue
         mapped_k, mapped_v = item_map(k, v)
-        output[mapped_k] = output.get(mapped_k, zero) + mapped_v
+        fn(mapped_k, mapped_v)
+
+
+def map_collect_elements(input, item_map=lambda x: x, zero=0):
+    output = {}
+
+    def update(k, v):
+        output[k] = output.get(k, zero) + v
+
+    map_elements(input, update, item_map)
+
     return output
 
 

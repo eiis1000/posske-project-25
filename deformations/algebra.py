@@ -79,6 +79,9 @@ class GlobalOp(ABC):
         else:
             return self.bracket_ordered_cached(other)
 
+    def bracket(self, other):
+        return self._bracket_(other)
+
     def sort_order(self):
         return (-self.hardness(), *self.selfsort_tuple())
 
