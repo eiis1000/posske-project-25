@@ -76,6 +76,9 @@ def main():
     # #     " + ...",
     # # )
     # Q = lrc.Q
+    a = alg.make([2, 1])
+    b = alg.bilocalize(a, a)
+    br = b.bracket(a)
     breakpoint()
 
 

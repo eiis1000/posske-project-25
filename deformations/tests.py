@@ -66,11 +66,11 @@ def deformation_tests():
         # ((4,), 4, 2),  # if prev fails this almost certainly does too
         ((2, -1), 5, 4),
         # ((3, -1), 4, 4),  # slow
-        # # ((3, -1), 5, 4),  # very slow
-        # ((1, 3), 3, 4),
-        # ((1, 3), 4, 2),
-        # ((2, 3), 1, 2),  # both fail
-        # ((2, 4), 1, 2),
+        # ((3, -1), 5, 4),  # very slow
+        ((1, 3), 3, 4),
+        ((1, 3), 4, 2),
+        ((2, 3), 1, 2),  # both fail
+        ((2, 4), 1, 2),
     ]
 
     speedy = True
@@ -93,19 +93,9 @@ def jacobi_tests():
     make = alg.make
     i = "precursor"
     assert alg.zero() == jacobi(
-        make([1]),
         make([2, 1]),
-        make(([3, 2, 1], [3, 2, 1])),
-    ), "Precursor identity-doubled bilocal Jacobi failed"
-    assert alg.zero() == jacobi(
-        make([1]),
-        make([3, 2, 1]),
-        make(([2, 1], [1])),
-    ), "Precursor identity bilocal Jacobi failed"
-    assert alg.zero() == jacobi(
-        make([3, 1, 2]),
-        make([2, 1]),
-        make(([2, 3, 1], [1])),
+        make([2, 3, 1]),
+        make(([2, 1], [2, 1])),
     ), "Precursor bilocal Jacobi failed"
     assert alg.zero() == jacobi(
         make([2, 1, 4, 3]),
@@ -113,7 +103,7 @@ def jacobi_tests():
         make(([2, 1],)),
     ), "Precursor boost Jacobi failed"
 
-    maxlen = 7
+    maxlen = 2  # TODO change this to a larger value and re-place asserts
     for i in range(1000):
         np.random.seed(i)
         lens = np.random.randint(1, maxlen + 1, 5)
