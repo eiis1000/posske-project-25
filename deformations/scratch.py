@@ -37,46 +37,46 @@ def main():
     # BLBQ2 = bilocal_boost(Q(2))
     # print("eq. 3.34: 1/4*(", i_ * 4 * lbl(2, 3).bracket(Q(2)), ")")
 
-    # if a test passes everything up to and incl order K fill Q, I will write
-    # "P(K;Q)". if it fails on homog, I'll write "H(K;Q)", and if it fails on
-    # algebra consistency I'll write "C(K;Q)". if it disagrees with Table 2,
-    # I'll write "T(K)" (since Q=2 always). if no ensure_filled is required for
-    # failure, I'll just write e.g. H(K), or I'll write H(K;_Q) where _Q is the
-    # charge that fails the test.
-    ## here are the boosts
-    # deform = (2,)    # P(5;4), consistency too slow
-    # deform = (3,)    # H(4;_2)
-    # deform = (4,)    # H(4;_2)
-    ## here are the boosts again, but this time generated bilocally
-    # deform = (2, -1)  # P(5;4)
-    # deform = (3, -1)  # P(5;4), consistency too slow
-    ## here are the bilocals
-    # deform = (1, 3)  # P(4)
-    deform = (2, 3)  # C(1)
-    # deform = (2, 4)  # T(1)
-    lrc = LongRangeChain(chain, deform)
-    lrc.ensure_order(1)
-    # lrc.ensure_order(3)
-    print("Q2: ", lrc.format(lrc.Q(2)))
-    print("Q3: ", lrc.format(lrc.Q(3)))
-    # print("Q4: ", lrc.format(lrc.Q(4)))
-    print("-" * 20)
-    print(
-        "[Q3, Q2]: ",
-        lrc.format(lrc.bracket_to_order(lrc.Q(3), lrc.Q(2)), lrc.order()),
-    )
-    # lrc.bracket_to_order(lrc.deform_gen(), lrc.Q(2))
-    # print("All brackets consistent: ", lrc.algebra_consistency())
-
-    # lrc.ensure_order(3)
-    # lrc.ensure_filled(4)
-    # print("[Q3, Q4]: ", lrc.format(lrc.bracket_to_order(Q(3), Q(4), 2), 2))
+    # # if a test passes everything up to and incl order K fill Q, I will write
+    # # "P(K;Q)". if it fails on homog, I'll write "H(K;Q)", and if it fails on
+    # # algebra consistency I'll write "C(K;Q)". if it disagrees with Table 2,
+    # # I'll write "T(K)" (since Q=2 always). if no ensure_filled is required for
+    # # failure, I'll just write e.g. H(K), or I'll write H(K;_Q) where _Q is the
+    # # charge that fails the test.
+    # ## here are the boosts
+    # # deform = (2,)    # P(5;4), consistency too slow
+    # # deform = (3,)    # H(4;_2)
+    # # deform = (4,)    # H(4;_2)
+    # ## here are the boosts again, but this time generated bilocally
+    # # deform = (2, -1)  # P(5;4)
+    # # deform = (3, -1)  # P(5;4), consistency too slow
+    # ## here are the bilocals
+    # # deform = (1, 3)  # P(4)
+    # deform = (2, 3)  # C(1)
+    # # deform = (2, 4)  # T(1)
+    # lrc = LongRangeChain(chain, deform)
+    # lrc.ensure_order(1)
+    # # lrc.ensure_order(3)
+    # print("Q2: ", lrc.format(lrc.Q(2)))
+    # print("Q3: ", lrc.format(lrc.Q(3)))
+    # # print("Q4: ", lrc.format(lrc.Q(4)))
+    # print("-" * 20)
     # print(
-    #     "[B[Q3], Q4]: ",
-    #     str(lrc.bracket_to_order(alg.boost(Q(3)), Q(4), 2), 2)[:100],
-    #     " + ...",
+    #     "[Q3, Q2]: ",
+    #     lrc.format(lrc.bracket_to_order(lrc.Q(3), lrc.Q(2)), lrc.order()),
     # )
-    Q = lrc.Q
+    # # lrc.bracket_to_order(lrc.deform_gen(), lrc.Q(2))
+    # # print("All brackets consistent: ", lrc.algebra_consistency())
+
+    # # lrc.ensure_order(3)
+    # # lrc.ensure_filled(4)
+    # # print("[Q3, Q4]: ", lrc.format(lrc.bracket_to_order(Q(3), Q(4), 2), 2))
+    # # print(
+    # #     "[B[Q3], Q4]: ",
+    # #     str(lrc.bracket_to_order(alg.boost(Q(3)), Q(4), 2), 2)[:100],
+    # #     " + ...",
+    # # )
+    # Q = lrc.Q
     breakpoint()
 
 
