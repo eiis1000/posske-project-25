@@ -479,11 +479,11 @@ class GLNBilocalOp(GlobalOp):
 
     @staticmethod
     @profile
-    def _append_antiwrap_proto(l, r, coeff, op, alg):
-        half_coeff = (alg.base().one() / 2) * coeff
+    def _append_antiwrap_proto(l, r, coeff, op, alg, half):
         comms = perm_compose_sided(l, r)
         for ix in [0, 1]:
             cur = GLNHomogOp(comms[ix], alg=alg)
+            half_coeff = half * coeff
             op((cur, half_coeff))
 
     @staticmethod
@@ -504,7 +504,9 @@ class GLNBilocalOp(GlobalOp):
         accum_antiwrap = []
 
         def append_antiwrap(left, right, coeff, op):
-            GLNBilocalOp._append_antiwrap_proto(left, right, coeff, op, alg)
+            GLNBilocalOp._append_antiwrap_proto(
+                left, right, coeff, op, alg, alg.base().one() / 2
+            )
 
         br_tg_drag, br_tg_pad = drag_right_on_left(birght, target)
         for br_tg_perm, coeff in br_tg_drag:
