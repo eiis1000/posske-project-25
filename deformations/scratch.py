@@ -1,8 +1,7 @@
-from .sage_proxy import sa  # initializes properly
-
 from .algebra import GlobalAlgebra
 from .long_chains import LongRangeChain
-from .operators.gln import make_gln, GLNHomogOp, GLNBoostOp, GLNBilocalOp
+from .operators.gln import GLNBilocalOp, GLNBoostOp, GLNHomogOp, make_gln
+from .sage_proxy import sa  # initializes properly
 from .short_chains import ShortRangeChain
 
 
@@ -80,8 +79,8 @@ def main():
     breakpoint()
 
 
-import sys
 import pdb
+import sys
 
 
 def custom_excepthook(exc_type, exc_value, exc_traceback):
