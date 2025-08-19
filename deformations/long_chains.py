@@ -119,10 +119,10 @@ class LongRangeChain:
         for q in range(2, len(self.charge_tower)):
             for r in range(2, q):
                 bracket = self.bracket_to_order(self.Q(q), self.Q(r), self.order())
-                if bracket != 0:
+                if not bracket.is_zero():
                     print(
                         f"Algebra inconsistency at order {self.order()}: "
-                        f"[Q{q}, Q{r}] = {str(bracket)[50:]}... != 0"
+                        f"[Q{q}, Q{r}] = {str(bracket)[:50]}... != 0"
                     )
                     return False
         return True

@@ -29,13 +29,14 @@ def map_elements(input, fn, item_map=lambda x: x):
         if hasattr(k, "is_zero") and k.is_zero():
             continue
         mapped_k, mapped_v = item_map(k, v)
-        fn(mapped_k, mapped_v)
+        fn((mapped_k, mapped_v))
 
 
 def map_collect_elements(input, item_map=lambda x: x, zero=0):
     output = {}
 
-    def update(k, v):
+    def update(kv):
+        k, v = kv
         output[k] = output.get(k, zero) + v
 
     map_elements(input, update, item_map)

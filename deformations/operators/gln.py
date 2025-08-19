@@ -1,20 +1,21 @@
 from operator import le
-from ..algebra import GlobalOp
-from ..config import (
-    perm_print_joiner,
-    symmetric_boost_identification,
-    incl_antiwrap_in_bilocal_bracket,
-    use_numba,
-)
-from ..tools import (
-    extend_linear,
-    map_elements,
-    map_collect_elements,
-    AccumWrapper,
-)
 
 import numpy as np
 import sage.all as sa
+
+from ..algebra import GlobalOp
+from ..config import (
+    incl_antiwrap_in_bilocal_bracket,
+    perm_print_joiner,
+    symmetric_boost_identification,
+    use_numba,
+)
+from ..tools import (
+    AccumWrapper,
+    extend_linear,
+    map_collect_elements,
+    map_elements,
+)
 
 try:
     from line_profiler import profile
@@ -164,6 +165,8 @@ class GLNHomogOp(GlobalOp):
         dragged, _ = drag_right_on_left(left_perm, right_perm)
 
         alg = left.alg or right.alg
+        if not alg:
+            breakpoint()
         final_dict = map_collect_elements(
             dragged, lambda k, v: (GLNHomogOp(list(k.tuple())), v), alg.base().zero()
         )
@@ -357,7 +360,7 @@ class GLNBilocalOp(GlobalOp):
 
     @staticmethod
     @profile
-    def reduce_slashed(left, lpad, rght, rpad, alg):
+    def reduce_slashed(left, lpad, rght, rpad, append_antiwrap):
         r"""
         [A/B]&=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{A_a, B_b}
         \\&=\frac12\sum_{0<a}\sum_{a<b\leq N-|B\leg |+1} \Bqty{A_a,  B \leg_b}
@@ -391,10 +394,9 @@ class GLNBilocalOp(GlobalOp):
         accum.append((primary, 1))
         accum.append((rght_hom, -ll_legs * left_hom.vacuum_ev()))
         accum.append((left_hom, -rr_legs * rght_hom.vacuum_ev()))
-        half = alg.base().one() / 2
         # the below updates accum
         GLNBilocalOp.reduce_slashed_recurse(
-            left_red, ll_legs, rght_red, rl_legs, accum, half
+            left_red, ll_legs, rght_red, rl_legs, accum, append_antiwrap
         )
         # note that lr isn't used because I think it's only on boundary.
 
@@ -406,39 +408,46 @@ class GLNBilocalOp(GlobalOp):
 
     @staticmethod
     @profile
-    def reduce_slashed_recurse(l_red, ll_legs, r_red, rl_legs, accum, half):
+    def reduce_slashed_recurse(l_red, ll_legs, r_red, rl_legs, accum, append_antiwrap):
         if rl_legs > 0:
-            comms = perm_compose_sided(l_red, pad_permutation(r_red, rl_legs))
+            # comms = perm_compose_sided(l_red, pad_permutation(r_red, rl_legs))
             # accum -= GLNBilocalOp.antiwrap(comms, alg)
-            accum.append((GLNHomogOp(comms[0]), -half))
-            accum.append((GLNHomogOp(comms[1]), -half))
+            append_antiwrap(l_red, pad_permutation(r_red, rl_legs), -1, op=accum.append)
             return GLNBilocalOp.reduce_slashed_recurse(
-                l_red, ll_legs, r_red, rl_legs - 1, accum, half
+                l_red, ll_legs, r_red, rl_legs - 1, accum, append_antiwrap
             )
         elif rl_legs < 0:
-            comms = perm_compose_sided(l_red, r_red)
+            # comms = perm_compose_sided(l_red, r_red)
             # accum += GLNBilocalOp.antiwrap(comms, alg)
-            accum.append((GLNHomogOp(comms[0]), half))
-            accum.append((GLNHomogOp(comms[1]), half))
+            append_antiwrap(l_red, r_red, 1, op=accum.append)
             return GLNBilocalOp.reduce_slashed_recurse(
-                l_red, ll_legs, pad_permutation(r_red, 1), rl_legs + 1, accum, half
+                l_red,
+                ll_legs,
+                pad_permutation(r_red, 1),
+                rl_legs + 1,
+                accum,
+                append_antiwrap,
             )
         elif ll_legs > 0:
-            comms = perm_compose_sided(l_red, r_red)
+            # comms = perm_compose_sided(l_red, r_red)
             # accum += GLNBilocalOp.antiwrap(comms, alg)
-            accum.append((GLNHomogOp(comms[0]), half))
-            accum.append((GLNHomogOp(comms[1]), half))
+            append_antiwrap(l_red, r_red, 1, op=accum.append)
             return GLNBilocalOp.reduce_slashed_recurse(
-                pad_permutation(l_red, 1), ll_legs - 1, r_red, rl_legs, accum, half
+                pad_permutation(l_red, 1),
+                ll_legs - 1,
+                r_red,
+                rl_legs,
+                accum,
+                append_antiwrap,
             )
         elif ll_legs < 0:
-            comms = perm_compose_sided(l_red, pad_permutation(r_red, -ll_legs))
+            # comms = perm_compose_sided(l_red, pad_permutation(r_red, -ll_legs))
             # accum -= GLNBilocalOp.antiwrap(comms, alg)
-            accum.append((GLNHomogOp(comms[0]), -half))
-            accum.append((GLNHomogOp(comms[1]), -half))
+            append_antiwrap(pad_permutation(l_red, 1), r_red, -1, op=accum.append)
+            # accum -= GLNBilocalOp.antiwrap(comms, alg)
             # XXX copilot wanted to put something here but I don't know why
             return GLNBilocalOp.reduce_slashed_recurse(
-                l_red, ll_legs + 1, r_red, rl_legs, accum, half
+                l_red, ll_legs + 1, r_red, rl_legs, accum, append_antiwrap
             )
         else:
             return accum
@@ -459,35 +468,40 @@ class GLNBilocalOp(GlobalOp):
         alg = left.alg or right.alg
         accum_slashed = []
         accum_antiwrap = []
+
+        def append_antiwrap(l, r, coeff, op):
+            half_coeff = (alg.base().one() / 2) * coeff
+            comms = perm_compose_sided(l, r)
+            for ix in [0, 1]:
+                op((GLNHomogOp(comms[ix], alg=alg), half_coeff))
+
         br_tg_drag, br_tg_pad = drag_right_on_left(birght, target)
         for sg_el, coeff in br_tg_drag:
             br_tg_perm = list(sg_el.tuple())
             reduced, primary = GLNBilocalOp.reduce_slashed(
-                bileft, 0, br_tg_perm, br_tg_pad, alg
+                bileft, 0, br_tg_perm, br_tg_pad, append_antiwrap
             )
             # accum_slashed += coeff * reduced
             accum_slashed.extend([(k, v * coeff) for (k, v) in reduced])
 
             red_left, red_rght = primary.data
-            red_comms = perm_compose_sided(red_left, red_rght)
+            # red_comms = perm_compose_sided(red_left, red_rght)
             # accum_antiwrap -= coeff * GLNBilocalOp.antiwrap(red_comms, alg) / 2
-            accum_antiwrap.append((GLNHomogOp(red_comms[0]), -coeff / 4))
-            accum_antiwrap.append((GLNHomogOp(red_comms[1]), -coeff / 4))
+            append_antiwrap(red_left, red_rght, -coeff / 2, op=accum_antiwrap.append)
 
         bl_tg_drag, bl_tg_pad = drag_right_on_left(bileft, target)
         for sg_el, coeff in bl_tg_drag:
             bl_tg_perm = list(sg_el.tuple())
             reduced, primary = GLNBilocalOp.reduce_slashed(
-                bl_tg_perm, bl_tg_pad, birght, 0, alg
+                bl_tg_perm, bl_tg_pad, birght, 0, append_antiwrap
             )
             # accum_slashed += coeff * reduced
             accum_slashed.extend([(k, v * coeff) for (k, v) in reduced])
 
             red_left, red_rght = primary.data
-            red_comms = perm_compose_sided(red_left, red_rght)
+            # red_comms = perm_compose_sided(red_left, red_rght)
             # accum_antiwrap -= coeff * GLNBilocalOp.antiwrap(red_comms, alg) / 2
-            accum_antiwrap.append((GLNHomogOp(red_comms[0]), -coeff / 4))
-            accum_antiwrap.append((GLNHomogOp(red_comms[1]), -coeff / 4))
+            append_antiwrap(red_left, red_rght, -coeff / 2, op=accum_antiwrap.append)
 
         bl_br_comms = perm_compose_sided(bileft, birght)
         # accum_antiwrap += (
@@ -495,7 +509,7 @@ class GLNBilocalOp(GlobalOp):
         # )
         quarter = alg.base().one() / 4
         for ix in [0, 1]:
-            cur = GLNHomogOp(bl_br_comms[ix]).bracket(right)
+            cur = GLNHomogOp(bl_br_comms[ix], alg=alg).bracket(right)
             map_elements(
                 cur,
                 accum_antiwrap.append,

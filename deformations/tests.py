@@ -1,14 +1,18 @@
+import time
+import trace
+import traceback
+
+import numpy as np
+
 from .algebra import GlobalAlgebra
 from .long_chains import LongRangeChain
 from .operators.gln import (
-    make_gln,
-    GLNBoostOp,
     GLNBilocalOp,
+    GLNBoostOp,
+    make_gln,
     reduce_permutation,
 )
 from .short_chains import ShortRangeChain
-import time
-import numpy as np
 
 
 def run_deformation_test(deform, max_order, max_q, skip_last_consistency=False):
@@ -48,6 +52,7 @@ def run_deformation_test(deform, max_order, max_q, skip_last_consistency=False):
             print(f"Test {test_name} PASSED.")
     except Exception as e:
         print(f"Test {test_name} FAILED with an exception: {e}")
+        traceback.print_exc()
     print(f"Elapsed: {time.perf_counter() - start_time:.2f}s\n")
 
 
@@ -84,59 +89,53 @@ def jacobi(a, b, c):
 
 
 def jacobi_tests():
-    try:
-        alg = GlobalAlgebra(GLNBoostOp.boost, GLNBilocalOp.bilocalize, make=make_gln)
-        make = alg.make
-        i = "precursor"
-        assert alg.zero() == jacobi(
-            make([2, 1, 4, 3]),
-            make([3, 1, 2]),
-            make(([2, 1],)),
-        ), "Precursor boost Jacobi failed"
-        assert alg.zero() == jacobi(
-            make([1]),
-            make([2, 1]),
-            make(([3, 2, 1], [3, 2, 1])),
-        ), "Precursor identity-doubled bilocal Jacobi failed"
-        assert alg.zero() == jacobi(
-            make([1]),
-            make([3, 2, 1]),
-            make(([2, 1], [1])),
-        ), "Precursor identity bilocal Jacobi failed"
-        assert alg.zero() == jacobi(
-            make([3, 1, 2]),
-            make([2, 1]),
-            make(([2, 3, 1], [1])),
-        ), "Precursor bilocal Jacobi failed"
+    alg = GlobalAlgebra(GLNBoostOp.boost, GLNBilocalOp.bilocalize, make=make_gln)
+    make = alg.make
+    i = "precursor"
+    assert alg.zero() == jacobi(
+        make([1]),
+        make([2, 1]),
+        make(([3, 2, 1], [3, 2, 1])),
+    ), "Precursor identity-doubled bilocal Jacobi failed"
+    assert alg.zero() == jacobi(
+        make([1]),
+        make([3, 2, 1]),
+        make(([2, 1], [1])),
+    ), "Precursor identity bilocal Jacobi failed"
+    assert alg.zero() == jacobi(
+        make([3, 1, 2]),
+        make([2, 1]),
+        make(([2, 3, 1], [1])),
+    ), "Precursor bilocal Jacobi failed"
+    assert alg.zero() == jacobi(
+        make([2, 1, 4, 3]),
+        make([3, 1, 2]),
+        make(([2, 1],)),
+    ), "Precursor boost Jacobi failed"
 
-        maxlen = 7
-        for i in range(1000):
-            np.random.seed(i)
-            lens = np.random.randint(1, maxlen + 1, 5)
-            perms = [
-                (reduce_permutation(np.random.permutation(k))[0] + 1).tolist()
-                for k in lens
-            ]
-            h1 = make(perms[0])
-            h2 = make(perms[1])
-            boosted = make((perms[2],))
-            bilocaled = make((perms[3], perms[4]))
-            boost_jacobi = jacobi(h1, h2, boosted)
-            # assert boost_jacobi == alg.zero(), (
-            if boost_jacobi != alg.zero():
-                print(
-                    f"Jacobi test {i} failed for {perms[0]}, {perms[1]}, B[{perms[2]}]: {boost_jacobi}"
-                )
-            bilocal_jacobi = jacobi(h1, h2, bilocaled)
-            if bilocal_jacobi != alg.zero():
-                print(
-                    # assert bilocal_jacobi == alg.zero(), (
-                    f"Jacobi test {i} failed for {perms[0]}, {perms[1]}, [{perms[3]}|{perms[4]}]: {bilocal_jacobi}"
-                )
-
-    except Exception as e:
-        print(f"Jacobi test {i} failed with exception:")
-        raise e
+    maxlen = 7
+    for i in range(1000):
+        np.random.seed(i)
+        lens = np.random.randint(1, maxlen + 1, 5)
+        perms = [
+            (reduce_permutation(np.random.permutation(k))[0] + 1).tolist() for k in lens
+        ]
+        h1 = make(perms[0])
+        h2 = make(perms[1])
+        boosted = make((perms[2],))
+        bilocaled = make((perms[3], perms[4]))
+        boost_jacobi = jacobi(h1, h2, boosted)
+        # assert boost_jacobi == alg.zero(), (
+        if boost_jacobi != alg.zero():
+            print(
+                f"Jacobi test {i} failed for {perms[0]}, {perms[1]}, B[{perms[2]}]: {boost_jacobi}"
+            )
+        bilocal_jacobi = jacobi(h1, h2, bilocaled)
+        if bilocal_jacobi != alg.zero():
+            print(
+                # assert bilocal_jacobi == alg.zero(), (
+                f"Jacobi test {i} failed for {perms[0]}, {perms[1]}, [{perms[3]}|{perms[4]}]: {bilocal_jacobi}"
+            )
 
     print("All Jacobi tests passed.")
     return
@@ -165,9 +164,18 @@ def trivial_tests():
 
 
 def run_tests():
-    trivial_tests()
-    jacobi_tests()
-    deformation_tests()
+    tests = [
+        trivial_tests,
+        jacobi_tests,
+        deformation_tests,
+    ]
+    for test in tests:
+        try:
+            test()
+        except Exception as e:
+            print(f"Test {test.__name__} failed by raising an exception: {e}")
+            traceback.print_exc()
+        print("-" * 40)
 
 
 if __name__ == "__main__":

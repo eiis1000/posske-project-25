@@ -1,14 +1,15 @@
 from abc import ABC, abstractmethod
 from functools import total_ordering
+
 import numpy as np
 import sage.all as sa
+from sage.algebras.lie_algebras.lie_algebra import LieAlgebraWithGenerators
+from sage.algebras.lie_algebras.lie_algebra_element import LieAlgebraElement
+from sage.structure.indexed_generators import IndexedGenerators
 
 from .config import enable_logging, log_basis_bracket
 from .tools import compose, wrap_logging
 
-from sage.structure.indexed_generators import IndexedGenerators
-from sage.algebras.lie_algebras.lie_algebra import LieAlgebraWithGenerators
-from sage.algebras.lie_algebras.lie_algebra_element import LieAlgebraElement
 # from sage.parallel.multiprocessing_sage import parallel_iter
 # from sage.parallel.map_reduce import RESetMapReduce
 
@@ -117,12 +118,15 @@ class GlobalAlgebra(sa.IndexedGenerators, sa.LieAlgebraWithGenerators):
 
     def _element_constructor_(self, x):
         """Convert x into an element of this algebra"""
-        if isinstance(x, GlobalOp):
+        if isinstance(x, dict):
+            for k in tuple(x.keys()):
+                if x[k] == 0:
+                    del x[k]
+        elif isinstance(x, GlobalOp):
             x.alg = self
             x = {x: self.ring(1)}
-        for k in tuple(x.keys()):
-            if x[k] == 0:
-                del x[k]
+        else:
+            raise TypeError(f"Cannot convert {type(x)} to an element of GlobalAlgebra.")
         return sa.LieAlgebraWithGenerators._element_constructor_(self, x)
 
     def bilocal_boost(self, Q):
