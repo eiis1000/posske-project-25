@@ -142,6 +142,33 @@ def jacobi_tests():
     return
 
 
-if __name__ == "__main__":
+def trivial_tests():
+    print("Running trivial tests...")
+    alg = GlobalAlgebra(GLNBoostOp.boost, GLNBilocalOp.bilocalize, make=make_gln)
+    h1 = alg.make([1])
+    h21 = alg.make([2, 1])
+    h312 = alg.make([3, 1, 2])
+    b11 = alg.bilocalize(h1, h1)
+    b211 = alg.bilocalize(h21, h1)
+    b121 = alg.bilocalize(h1, h21)
+    b2121 = alg.bilocalize(h21, h21)
+    b3121 = alg.bilocalize(h312, h1)
+    b31221 = alg.bilocalize(h312, h21)
+    b312312 = alg.bilocalize(h312, h312)
+    targets = [h21, h312, b11, b211, b121, b2121, b3121, b31221, b312312]
+    for t in targets:
+        target_identity_bracket = alg.bracket(t, h1)
+        assert alg.zero() == target_identity_bracket, (
+            f"Identity bracket test failed for {t}: {target_identity_bracket}"
+        )
+    print("All trivial tests passed.")
+
+
+def run_tests():
+    trivial_tests()
     jacobi_tests()
     deformation_tests()
+
+
+if __name__ == "__main__":
+    run_tests()
