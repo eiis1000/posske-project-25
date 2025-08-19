@@ -39,14 +39,18 @@ def map_elements(input, fn, item_map):
 
 
 @profile
+def _map_collect_elements_update_proto(kv, zero, output):
+    k, v = kv
+    output[k] = output.get(k, zero) + v
+
+
+@profile
 def map_collect_elements(input, item_map, zero=0):
     output = {}
 
-    def update(kv):
-        k, v = kv
-        output[k] = output.get(k, zero) + v
-
-    map_elements(input, update, item_map)
+    map_elements(
+        input, lambda kv: _map_collect_elements_update_proto(kv, zero, output), item_map
+    )
 
     return output
 

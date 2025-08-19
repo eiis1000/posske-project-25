@@ -24,9 +24,10 @@ except ImportError:
     profile = lambda *_, **__: lambda fn: fn
 
 if use_numba:
-    from numba import njit
+    from numba import njit, prange
 else:
     njit = lambda *_, **__: lambda fn: fn
+    prange = range
 
 
 @njit(cache=True)
@@ -57,6 +58,8 @@ def is_reduced_permutation(perm):
 def normalize_permutation(perm):
     """Ensure the permutation is a numpy array and 0-indexed."""
     if not isinstance(perm, np.ndarray):
+        if isinstance(perm, sa.SageObject):
+            perm = list(perm.tuple())
         assert isinstance(perm, list)  # and all(isinstance(x, int) for x in perm)
         perm = np.array(perm, dtype=np.int32) - 1
     assert is_valid_permutation(perm)
@@ -81,6 +84,7 @@ def reduce_permutation(perm, padding=0):
     return reduced, (offset - padding, len(perm) - end - padding)
 
 
+@njit(cache=True)
 def pad_permutation(perm, padding):
     larger_perm = np.arange(len(perm) + 2 * padding, dtype=np.int32)
     larger_perm[padding : len(larger_perm) - padding] = perm + padding
@@ -111,31 +115,46 @@ def make_gln(target, alg=None):
         )
 
 
+@njit(cache=True)
 def drag_right_on_left(left_perm, right_perm):
     # padding = len(right_perm) + 1  # extra padding for fun :)
     padding = len(right_perm)
     # padding = len(right_perm) - 1
     left_padded = pad_permutation(left_perm, padding)
     full_size = len(left_padded)
-    symmetric_group = sa.SymmetricGroup(full_size)
-    sga = sa.GroupAlgebra(symmetric_group, sa.ZZ)
-
-    accum = sga.zero()
-    left_padded_sga = sga((left_padded + 1).tolist())
+    pos_accum = []
+    neg_accum = []
     for i in range(full_size - len(right_perm)):
-        right_extended = np.arange(full_size, dtype=int)
+        right_extended = np.arange(full_size, dtype=np.int32)
         right_extended[i : i + len(right_perm)] = right_perm + i
-        right_extended_sga = sga((right_extended + 1).tolist())
-        comm = sga.bracket(left_padded_sga, right_extended_sga)
-        accum += comm
+        lr, rl = left_padded[right_extended], right_extended[left_padded]
+        if not np.array_equal(lr, rl):
+            pos_accum.append(lr)
+            neg_accum.append(rl)
 
+    pos_flags = np.ones(len(pos_accum), dtype=np.bool_)
+    neg_flags = np.ones(len(neg_accum), dtype=np.bool_)
+    for i in range(len(pos_accum)):
+        for j in range(len(neg_accum)):
+            if neg_flags[j] and np.array_equal(pos_accum[i], neg_accum[j]):
+                pos_flags[i] = False
+                neg_flags[j] = False
+                break
+
+    accum = []
+    for i in range(len(pos_accum)):
+        if pos_flags[i]:
+            accum.append((pos_accum[i], 1))
+    for i in range(len(neg_accum)):
+        if neg_flags[i]:
+            accum.append((neg_accum[i], -1))
     return accum, padding
 
 
 @njit(cache=True)
 def perm_compose_sided(left_perm, right_perm):
-    assert is_valid_permutation(left_perm)
-    assert is_valid_permutation(right_perm)
+    # assert is_valid_permutation(left_perm)
+    # assert is_valid_permutation(right_perm)
     # sg = sa.SymmetricGroup(max(len(left_perm), len(right_perm)))
     # left, right = sg((left_perm + 1).tolist()), sg((right_perm + 1).tolist())
     # lr = list((left * right).tuple())
@@ -170,15 +189,14 @@ class GLNHomogOp(GlobalOp):
         return (len(self.data), self.data.tobytes())
 
     @staticmethod
+    @profile
     def bracket_homog_homog(left, right):
         left_perm, right_perm = left.data, right.data
         dragged, _ = drag_right_on_left(left_perm, right_perm)
 
         alg = left.alg or right.alg
-        if not alg:
-            breakpoint()
         final_dict = map_collect_elements(
-            dragged, lambda k, v: (GLNHomogOp(list(k.tuple())), v), alg.base().zero()
+            dragged, lambda k, v: (GLNHomogOp(k), v), alg.base().zero()
         )
 
         final = alg(final_dict)
@@ -267,10 +285,7 @@ class GLNBoostOp(GlobalOp):
         final_list = []
         for sg_el, coeff in dragged:
             final_list.extend(
-                [
-                    (k, v * coeff)
-                    for (k, v) in GLNBoostOp.reduce(list(sg_el.tuple()), padding, alg)
-                ]
+                [(k, v * coeff) for (k, v) in GLNBoostOp.reduce(sg_el, padding, alg)]
             )
         final_dict = map_collect_elements(
             final_list, lambda k, v: (k, v), alg.base().zero()
@@ -464,7 +479,7 @@ class GLNBilocalOp(GlobalOp):
 
     @staticmethod
     @profile
-    def append_antiwrap_proto(l, r, coeff, op, alg):
+    def _append_antiwrap_proto(l, r, coeff, op, alg):
         half_coeff = (alg.base().one() / 2) * coeff
         comms = perm_compose_sided(l, r)
         for ix in [0, 1]:
@@ -489,11 +504,10 @@ class GLNBilocalOp(GlobalOp):
         accum_antiwrap = []
 
         def append_antiwrap(left, right, coeff, op):
-            GLNBilocalOp.append_antiwrap_proto(left, right, coeff, op, alg)
+            GLNBilocalOp._append_antiwrap_proto(left, right, coeff, op, alg)
 
         br_tg_drag, br_tg_pad = drag_right_on_left(birght, target)
-        for sg_el, coeff in br_tg_drag:
-            br_tg_perm = list(sg_el.tuple())
+        for br_tg_perm, coeff in br_tg_drag:
             reduced, primary = GLNBilocalOp.reduce_slashed(
                 bileft, 0, br_tg_perm, br_tg_pad, append_antiwrap
             )
@@ -506,8 +520,7 @@ class GLNBilocalOp(GlobalOp):
             append_antiwrap(red_left, red_rght, -coeff / 2, op=accum_antiwrap.append)
 
         bl_tg_drag, bl_tg_pad = drag_right_on_left(bileft, target)
-        for sg_el, coeff in bl_tg_drag:
-            bl_tg_perm = list(sg_el.tuple())
+        for bl_tg_perm, coeff in bl_tg_drag:
             reduced, primary = GLNBilocalOp.reduce_slashed(
                 bl_tg_perm, bl_tg_pad, birght, 0, append_antiwrap
             )

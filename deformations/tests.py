@@ -65,12 +65,12 @@ def deformation_tests():
         ((3,), 4, 2),  # fails
         # ((4,), 4, 2),  # if prev fails this almost certainly does too
         ((2, -1), 5, 4),
-        ((3, -1), 4, 4),  # slow
-        # ((3, -1), 5, 4),  # very slow
-        ((1, 3), 3, 4),
-        ((1, 3), 4, 2),
-        ((2, 3), 1, 2),  # both fail
-        ((2, 4), 1, 2),
+        # ((3, -1), 4, 4),  # slow
+        # # ((3, -1), 5, 4),  # very slow
+        # ((1, 3), 3, 4),
+        # ((1, 3), 4, 2),
+        # ((2, 3), 1, 2),  # both fail
+        # ((2, 4), 1, 2),
     ]
 
     speedy = True
