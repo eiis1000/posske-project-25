@@ -40,10 +40,12 @@ def run_deformation_test(deform, max_order, max_q, skip_last_consistency=False):
         # which specific order fails
         consistent = True
         for ord in range(1, max_order + 1):
+            print(f"Computing order {ord}...", end="\r")
             lrc.ensure_order(ord)
             if skip_last_consistency and ord == max_order:
                 # this option exists for speed reasons. the check is slow
                 continue
+            print(f"Order {ord} consistency...", end="\r")
             consistent = lrc.algebra_consistency()
             if not consistent:
                 print(f"Test {test_name} FAILED on consistency at order {ord}.")
@@ -69,7 +71,6 @@ def deformation_tests():
         # ((3, -1), 4, 4),  # slow
         ((1, 3), 3, 4),
         ((1, 3), 4, 3),
-        ((1, 3), 4, 2),
         ((2, 3), 3, 2),
         ((2, 4), 2, 2),
     ]
