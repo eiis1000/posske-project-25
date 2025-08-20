@@ -59,13 +59,13 @@ class LongRangeChain:
         match deformation:
             case f if callable(f):
                 return f
-            case (k,) if isinstance(k, int):
+            case (k,) if type(k) is int:
                 self.ensure_filled(k)
                 return lambda self: self.alg.boost(self.Q(k))
-            case (k, -1) if isinstance(k, int):
+            case (k, -1) if type(k) is int:
                 self.ensure_filled(k)
                 return lambda self: self.alg.bilocal_boost(self.Q(k))
-            case (k, l) if isinstance(k, int) and isinstance(l, int):
+            case (k, l) if type(k) is int and type(l) is int:
                 self.ensure_filled(k)
                 self.ensure_filled(l)
                 return lambda self: self.alg.bilocalize(self.Q(k), self.Q(l))
@@ -90,9 +90,9 @@ class LongRangeChain:
 
     @staticmethod
     def bracket_at_order(left, right, order):
-        if not isinstance(left, list):
+        if type(left) is not list:
             left = LongRangeChain.extract_orders(left)
-        if not isinstance(right, list):
+        if type(right) is not list:
             right = LongRangeChain.extract_orders(right)
         res = 0
         for k in range(order + 1):

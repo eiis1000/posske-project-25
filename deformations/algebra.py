@@ -29,22 +29,22 @@ class GlobalOp(ABC):
     def __hash__(self):
         if self._hash is not None:
             return self._hash
-        if isinstance(self.data, np.ndarray):
+        if type(self.data) is np.ndarray:
             self._hash = hash((self.data.tobytes(), type(self)))
-        elif isinstance(self.data, (list, tuple)):
+        elif type(self.data) is list or type(self.data) is tuple:
             self._hash = hash((tuple(k.tobytes() for k in self.data), type(self)))
         else:
             self._hash = hash((self.data, type(self)))
         return self._hash
 
     def __eq__(self, other):
-        if not isinstance(other, type(self)):
+        if type(other) is not type(self):
             return False
-        if isinstance(self.data, np.ndarray) and isinstance(other.data, np.ndarray):
+        if type(self.data) is np.ndarray and type(other.data) is np.ndarray:
             return np.array_equal(self.data, other.data)
-        elif isinstance(self.data, tuple):
+        elif type(self.data) is tuple:
             assert len(self.data) == 2
-            assert isinstance(self.data[0], np.ndarray)
+            assert type(self.data[0]) is np.ndarray
             self_l, self_r = self.data
             other_l, other_r = other.data
             return np.array_equal(self_l, other_l) and np.array_equal(self_r, other_r)
@@ -118,7 +118,7 @@ class GlobalAlgebra(sa.IndexedGenerators, sa.LieAlgebraWithGenerators):
 
     def _element_constructor_(self, x):
         """Convert x into an element of this algebra"""
-        if isinstance(x, dict):
+        if type(x) is dict:
             for k in tuple(x.keys()):
                 if x[k] == 0:
                     del x[k]

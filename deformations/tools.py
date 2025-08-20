@@ -29,7 +29,7 @@ def extend_bilinear(fn):
 
 @profile
 def map_elements(input, fn, item_map):
-    if isinstance(input, dict):
+    if type(input) is dict:
         input = input.items()
     for k, v in input:
         if hasattr(k, "is_zero") and k.is_zero():

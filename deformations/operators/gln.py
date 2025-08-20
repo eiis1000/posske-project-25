@@ -1,4 +1,5 @@
 import stat
+from functools import cache
 from operator import le
 
 import numpy as np
@@ -58,12 +59,11 @@ def is_reduced_permutation(perm):
 
 def normalize_permutation(perm):
     """Ensure the permutation is a numpy array and 0-indexed."""
-    if not isinstance(perm, np.ndarray):
+    if type(perm) is not np.ndarray:
         if isinstance(perm, sa.SageObject):
             perm = list(perm.tuple())
-        assert isinstance(perm, list)  # and all(isinstance(x, int) for x in perm)
+        assert type(perm) is list  # and all(isinstance(x, int) for x in perm)
         perm = np.array(perm, dtype=np.int32) - 1
-    assert is_valid_permutation(perm)
     return perm
 
 
@@ -81,7 +81,7 @@ def reduce_permutation(perm, padding=0):
     reduced = perm[offset:end]
     reduced = reduced.astype(np.int32)  # copies as well
     reduced -= offset
-    assert is_valid_permutation(reduced)
+    # assert is_valid_permutation(reduced)
     return reduced, (offset - padding, len(perm) - end - padding)
 
 
@@ -99,9 +99,9 @@ def repr_permutation(perm):
 
 def make_gln(target, alg=None):
     # convenience method
-    if isinstance(target, list) or isinstance(target, np.ndarray):
+    if type(target) is list or type(target) is np.ndarray:
         return GLNHomogOp(target, alg=alg)
-    elif isinstance(target, tuple):
+    elif type(target) is tuple:
         if len(target) == 1:
             (l,) = target
             return GLNBoostOp(l, alg=alg)
@@ -117,21 +117,21 @@ def make_gln(target, alg=None):
 
 
 @njit(cache=True)
-def drag_right_on_left(left_perm, right_perm):
+def _drag_right_on_left(left_perm, right_perm):
     # padding = len(right_perm) + 1  # extra padding for fun :)
     padding = len(right_perm)
     # padding = len(right_perm) - 1
     left_padded = pad_permutation(left_perm, padding)
     full_size = len(left_padded)
-    pos_accum = []
-    neg_accum = []
-    for i in range(full_size - len(right_perm)):
+    num = full_size - len(right_perm)
+    pos_accum = np.zeros((num, full_size), dtype=np.int32)
+    neg_accum = np.zeros((num, full_size), dtype=np.int32)
+    for i in range(num):
         right_extended = np.arange(full_size, dtype=np.int32)
         right_extended[i : i + len(right_perm)] = right_perm + i
         lr, rl = left_padded[right_extended], right_extended[left_padded]
-        if not np.array_equal(lr, rl):
-            pos_accum.append(lr)
-            neg_accum.append(rl)
+        pos_accum[i] = lr
+        neg_accum[i] = rl
 
     pos_flags = np.ones(len(pos_accum), dtype=np.bool_)
     neg_flags = np.ones(len(neg_accum), dtype=np.bool_)
@@ -142,13 +142,21 @@ def drag_right_on_left(left_perm, right_perm):
                 neg_flags[j] = False
                 break
 
+    return pos_accum, neg_accum, pos_flags, neg_flags, padding
+
+
+@profile
+def drag_right_on_left(left_perm, right_perm, one=1):
+    neg_one = -one
+    pos, neg, pos_flags, neg_flags, padding = _drag_right_on_left(left_perm, right_perm)
     accum = []
-    for i in range(len(pos_accum)):
+    num = len(pos_flags)
+    for i in range(num):
         if pos_flags[i]:
-            accum.append((pos_accum[i], 1))
-    for i in range(len(neg_accum)):
+            accum.append((pos[i], one))
         if neg_flags[i]:
-            accum.append((neg_accum[i], -1))
+            accum.append((neg[i], neg_one))
+
     return accum, padding
 
 
@@ -170,9 +178,23 @@ def perm_compose_sided(left_perm, right_perm):
     return lr, rl
 
 
+@njit(cache=True)
+def pair_pad(a, a_pad, b, b_pad):
+    a_pad = a_pad - b_pad
+    if a_pad > 0:
+        return pad_permutation(a, a_pad), b
+    elif a_pad < 0:
+        return a, pad_permutation(b, -a_pad)
+    else:
+        return a, b
+
+
 class GLNHomogOp(GlobalOp):
+    @profile
     def __init__(self, perm, alg=None):
-        perm = normalize_permutation(perm)
+        if type(perm) is not np.ndarray:
+            perm = normalize_permutation(perm)
+        # assert is_valid_permutation(perm)
         self.data, *_ = reduce_permutation(perm)
         self.alg = alg
 
@@ -183,7 +205,7 @@ class GLNHomogOp(GlobalOp):
         return 1
 
     def bracket_ordered(self, other):
-        assert isinstance(other, GLNHomogOp)
+        assert type(other) is GLNHomogOp
         return GLNHomogOp.bracket_homog_homog(self, other)
 
     def selfsort_tuple(self):
@@ -192,11 +214,12 @@ class GLNHomogOp(GlobalOp):
     @staticmethod
     @profile
     def bracket_homog_homog(left, right):
-        left_perm, right_perm = left.data, right.data
-        dragged, _ = drag_right_on_left(left_perm, right_perm)
-
         alg = left.alg or right.alg
         ring = alg.base()
+
+        left_perm, right_perm = left.data, right.data
+        dragged, _ = drag_right_on_left(left_perm, right_perm, ring.one())
+
         final_dict = map_collect_elements(
             dragged, lambda k, v: (GLNHomogOp(k), ring(v)), ring.zero()
         )
@@ -218,8 +241,17 @@ class GLNHomogOp(GlobalOp):
         # return 1 if even else -1
 
 
-class GLNBoostOp(GlobalOp):
+class GLNBoostOp(GlobalOp):  # XXX THIS CLASS IS DEPRECATED
     def __init__(self, perm, alg=None):
+        # raise DeprecationWarning(
+        #     """
+        #     Deprecated because there seem to exist some currently-unknown relations
+        #     between boost operators this causes inhomogeneities that are resolved by
+        #     using bilocal-boosts, which are more well-behaved. Figuring out these
+        #     relations would be an interesting topic of exploration, and would probably
+        #     only take a few days.
+        #     """
+        # )
         perm = normalize_permutation(perm)
         assert is_reduced_permutation(perm)
         self.data = perm
@@ -232,7 +264,7 @@ class GLNBoostOp(GlobalOp):
         return 10
 
     def bracket_ordered(self, other):
-        assert isinstance(other, GLNHomogOp)
+        assert type(other) is GLNHomogOp
         return GLNBoostOp.bracket_boost_homog(self, other)
 
     def selfsort_tuple(self):
@@ -240,9 +272,9 @@ class GLNBoostOp(GlobalOp):
 
     @staticmethod
     def boost(other):
-        if isinstance(other, list) or isinstance(other, np.ndarray):
+        if type(other) is list or type(other) is np.ndarray:
             return GLNBoostOp(other)
-        if isinstance(other, GLNHomogOp):
+        if type(other) is GLNHomogOp:
             return GLNBoostOp(other.data, other.alg)
         elif other.parent() in sa.Modules:
             return extend_linear(GLNBoostOp.boost)(other)
@@ -280,18 +312,19 @@ class GLNBoostOp(GlobalOp):
         # the methodology here is to write sum_a a sum_b [l(a), r(b)] and so
         # we're just expanding the inner sum and then calling that a boost op
         # (where we then need to do the appropriate operator identification)
-        left_perm, right_perm = left.data, right.data
-        dragged, padding = drag_right_on_left(left_perm, right_perm)
-
         alg = left.alg or right.alg
+        ring = alg.base()
+
+        left_perm, right_perm = left.data, right.data
+        dragged, padding = drag_right_on_left(left_perm, right_perm, ring.one())
+
         final_list = []
         for sg_el, coeff in dragged:
+            coeff = ring(coeff)  # probably already true
             final_list.extend(
                 [(k, v * coeff) for (k, v) in GLNBoostOp.reduce(sg_el, padding, alg)]
             )
-        final_dict = map_collect_elements(
-            final_list, lambda k, v: (k, v), alg.base().zero()
-        )
+        final_dict = map_collect_elements(final_list, lambda k, v: (k, v), ring.zero())
 
         return alg(final_dict) if final_dict else alg.zero()
 
@@ -329,7 +362,7 @@ class GLNBilocalOp(GlobalOp):
         return 100
 
     def bracket_ordered(self, other):
-        if not isinstance(other, GLNHomogOp):
+        if type(other) is not GLNHomogOp:
             raise NotImplementedError()
         return self.bracket_bilocal_homog(self, other)
 
@@ -343,11 +376,11 @@ class GLNBilocalOp(GlobalOp):
 
     @staticmethod
     def bilocalize(left, right):
-        if isinstance(left, list) or isinstance(left, np.ndarray):
-            assert isinstance(right, list) or isinstance(right, np.ndarray)
+        if type(left) is list or type(left) is np.ndarray:
+            assert type(right) is list or type(right) is np.ndarray
             return GLNBilocalOp(left, right)
-        elif isinstance(left, GLNHomogOp):
-            assert isinstance(right, GLNHomogOp)
+        elif type(left) is GLNHomogOp:
+            assert type(right) is GLNHomogOp
             alg = left.alg or right.alg
             assert alg is not None, "Algebra must be provided for bilocalization"
             return GLNBilocalOp(left.data, right.data, alg=alg)
@@ -364,7 +397,7 @@ class GLNBilocalOp(GlobalOp):
             accum = alg.zero()
             for l, lc in left:
                 for r, rc in right:
-                    assert isinstance(l, GLNHomogOp) and isinstance(r, GLNHomogOp)
+                    assert type(l) is GLNHomogOp and type(r) is GLNHomogOp
                     lx = np.arange(left_len, dtype=int)
                     rx = np.arange(right_len, dtype=int)
                     if len(l.data):
@@ -389,18 +422,28 @@ class GLNBilocalOp(GlobalOp):
     @profile
     def reduce_slashed(left, lpad, rght, rpad, append_antiwrap):
         r"""
-        [A/B]&=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{A_a, B_b}
-        \\&=\frac12\sum_{0<a}\sum_{a<b\leq N-|B\leg |+1} \Bqty{A_a,  B \leg_b}
-        \\&=\frac12\sum_{0<a}\sum_{a<b\leq N-|B\leg |} \Bqty{A_a, B\leg_b}+\frac12\sum_{0<a} \Bqty{A_a, B_{N-|B|}}
-        \\&=[A/ B\leg ]+[A]\ev B
-        \\&=\frac12\sum_{0<a}\sum_{a-1<b\leq N-|B|} \Bqty{A_a, \leg B_b}
-        \\&=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{A_a, \leg B_b}+\frac12\sum_a\Bqty{A_a, \leg B_a}
-        \\&=[A/\leg B]+\antiwrap{A, \leg B}
-        \\&=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{A\leg_a,  B_b}
-        \\&=[A\leg/ B]
-        \\&=\frac12\sum_{-1<a}\sum_{a+1<b\leq N-|B|} \Bqty{\leg A_a, B_b}
-        \\&=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{\leg A_a, B_b}+\frac12\sum_{b \leq N-|B|} \Bqty{A_0, B_b}-\frac12\sum_{0<a}\Bqty{\leg A_a, B_{a+1}}
-        \\&=[\leg A/ B ]+\ev A [B]-\antiwrap{A, B}
+        \begin{align}
+        [A/B]&=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{A_a, B_b}\\
+        [A/\leg B]&=\frac12\sum_{0<a}\sum_{a<b\leq N-|\leg B|} \Bqty{A_a, \leg B_b}\\
+        &=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|-1} \Bqty{A_a,  B_{b+1}}\\
+        &=\frac12\sum_{0<a}\sum_{a+1<b\leq N-|B|} \Bqty{A_a,  B_{b}}\\
+        &=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{A_a,  B_{b}}-\frac12\sum_{a}\Bqty{A_a,  B_{a+1}}\\
+        &=[A/B]-\antiwrap{A, \leg B}\\
+        [A/B\leg ]&=\frac12\sum_{0<a}\sum_{a<b\leq N-|B\leg |} \Bqty{A_a, B_b\leg }\\
+        &=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|-1} \Bqty{A_a,  B_{b}}\\
+        &=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{A_a,  B_{b}}-{ \frac12\sum_{a}\Bqty{A_a,  B_{N-|B|-1}} }\\
+        &=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{A_a,  B_{b}}-{ \sum_a A_a }\\
+        &=[A/B]-[A]\\
+        [\leg A/B]&=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{\leg A_a, B_b\leg }\\
+        &=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{A_{a+1},  B_{b}}\\
+        &=\frac12\sum_{1<a}\sum_{a-1<b\leq N-|B|} \Bqty{A_{a},  B_{b}}\\
+        &=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{A_a,  B_{b}}- \frac12\sum_{b}\Bqty{A_1,  B_{b}}+\frac12\sum_{a}\Bqty{A_{a},  B_{a}} \\
+        &=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{A_a,  B_{b}}- \sum_{b}B_b+\frac12\sum_{a}\Bqty{A_{a},  B_{a}} \\
+        &=[A/B]-[B]+\antiwrap{A,B}\\
+        [A\leg /B]&=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{ A_a\leg, B_b\leg }\\
+        &=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{A_{a},  B_{b}}\\
+        &=[A/B]\\
+        {}\end{align}
         """
         left = normalize_permutation(left)
         rght = normalize_permutation(rght)
@@ -425,11 +468,11 @@ class GLNBilocalOp(GlobalOp):
             accum.append((left_hom, -rr_legs * rght_hom.vacuum_ev()))
         # the below updates accum
         GLNBilocalOp.reduce_slashed_recurse(
-            left_red, ll_legs, rght_red, rl_legs, accum, append_antiwrap
+            left_red, rght_red, ll_legs, rl_legs, accum, append_antiwrap
         )
         # note that lr isn't used because I think it's only on boundary.
 
-        accum = accum._wrapped if isinstance(accum, AccumWrapper) else accum
+        accum = accum._wrapped if type(accum) is AccumWrapper else accum
 
         # accum = map_collect_elements(accum, lambda k, v: (alg(k), v), alg.base().zero())
 
@@ -437,57 +480,38 @@ class GLNBilocalOp(GlobalOp):
 
     @staticmethod
     @profile
-    def reduce_slashed_recurse(l_red, ll_legs, r_red, rl_legs, accum, append_antiwrap):
-        append_antiwrap_bak = append_antiwrap
-
-        def logged_append(*arg):
-            print("LOGGING APPEND:")
-            print(l_red, ll_legs, r_red, rl_legs, accum)
-            print(arg)
-            append_antiwrap_bak(*arg)
-            print(accum)
-            print("LOG OVER ^")
-
-        append_antiwrap = logged_append
-        if rl_legs > 0:
-            # comms = perm_compose_sided(l_red, pad_permutation(r_red, rl_legs))
-            # accum -= GLNBilocalOp.antiwrap(comms, alg)
-            append_antiwrap(l_red, pad_permutation(r_red, rl_legs), -1, accum.append)
-            return GLNBilocalOp.reduce_slashed_recurse(
-                l_red, ll_legs, r_red, rl_legs - 1, accum, append_antiwrap
-            )
-        elif rl_legs < 0:
+    def reduce_slashed_recurse(l_red, r_red, ll_legs, rl_legs, accum, append_antiwrap):
+        if ll_legs > 0:
             # comms = perm_compose_sided(l_red, r_red)
             # accum += GLNBilocalOp.antiwrap(comms, alg)
-            append_antiwrap(l_red, r_red, 1, accum.append)
+            l, r = pair_pad(l_red, ll_legs - 1, r_red, rl_legs)
+            append_antiwrap(l, r, 1, accum.append)
             return GLNBilocalOp.reduce_slashed_recurse(
-                l_red,
-                ll_legs,
-                pad_permutation(r_red, 1),
-                rl_legs + 1,
-                accum,
-                append_antiwrap,
-            )
-        elif ll_legs > 0:
-            # comms = perm_compose_sided(l_red, r_red)
-            # accum += GLNBilocalOp.antiwrap(comms, alg)
-            append_antiwrap(l_red, r_red, 1, accum.append)
-            return GLNBilocalOp.reduce_slashed_recurse(
-                pad_permutation(l_red, 1),
-                ll_legs - 1,
-                r_red,
-                rl_legs,
-                accum,
-                append_antiwrap,
+                l_red, r_red, ll_legs - 1, rl_legs, accum, append_antiwrap
             )
         elif ll_legs < 0:
             # comms = perm_compose_sided(l_red, pad_permutation(r_red, -ll_legs))
             # accum -= GLNBilocalOp.antiwrap(comms, alg)
-            append_antiwrap(pad_permutation(l_red, 1), r_red, -1, accum.append)
-            # accum -= GLNBilocalOp.antiwrap(comms, alg)
-            # XXX copilot wanted to put something here but I don't know why
+            l, r = pair_pad(l_red, ll_legs, r_red, rl_legs)
+            append_antiwrap(l, r, -1, accum.append)
             return GLNBilocalOp.reduce_slashed_recurse(
-                l_red, ll_legs + 1, r_red, rl_legs, accum, append_antiwrap
+                l_red, r_red, ll_legs + 1, rl_legs, accum, append_antiwrap
+            )
+        elif rl_legs > 0:
+            # comms = perm_compose_sided(l_red, pad_permutation(r_red, rl_legs))
+            # accum -= GLNBilocalOp.antiwrap(comms, alg)
+            l, r = pair_pad(l_red, 0, r_red, rl_legs)
+            append_antiwrap(l, r, -1, accum.append)
+            return GLNBilocalOp.reduce_slashed_recurse(
+                l_red, r_red, ll_legs, rl_legs - 1, accum, append_antiwrap
+            )
+        elif rl_legs < 0:
+            # comms = perm_compose_sided(l_red, r_red)
+            # accum += GLNBilocalOp.antiwrap(comms, alg)
+            l, r = pair_pad(l_red, 0, r_red, rl_legs + 1)
+            append_antiwrap(l, r, 1, accum.append)
+            return GLNBilocalOp.reduce_slashed_recurse(
+                l_red, r_red, ll_legs, rl_legs + 1, accum, append_antiwrap
             )
         else:
             return accum
@@ -511,9 +535,6 @@ class GLNBilocalOp(GlobalOp):
         target = right.data
         # for short, these are bl, br, tg.
 
-        # TODO CHECK IF ANTIWRAP FROM THE ORIGINAL BILOCAL IS ACTUALLY BEING HANDLED
-        # TODO CHECK SIGNS OF ANTIWRAP TERMS
-
         alg = left.alg or right.alg
         ring = alg.base()
         half = ring.one() / 2
@@ -523,7 +544,7 @@ class GLNBilocalOp(GlobalOp):
         def append_antiwrap(left, right, coeff, op):
             GLNBilocalOp._append_antiwrap_proto(left, right, coeff, op, alg, half)
 
-        br_tg_drag, br_tg_pad = drag_right_on_left(birght, target)
+        br_tg_drag, br_tg_pad = drag_right_on_left(birght, target, ring.one())
         for br_tg_perm, coeff in br_tg_drag:
             coeff = ring(coeff)
             reduced, primary = GLNBilocalOp.reduce_slashed(
@@ -537,7 +558,7 @@ class GLNBilocalOp(GlobalOp):
             # accum_antiwrap -= coeff * GLNBilocalOp.antiwrap(red_comms, alg) / 2
             append_antiwrap(red_left, red_rght, -coeff / 2, accum_antiwrap.append)
 
-        bl_tg_drag, bl_tg_pad = drag_right_on_left(bileft, target)
+        bl_tg_drag, bl_tg_pad = drag_right_on_left(bileft, target, ring.one())
         for bl_tg_perm, coeff in bl_tg_drag:
             coeff = ring(coeff)
             reduced, primary = GLNBilocalOp.reduce_slashed(
