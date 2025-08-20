@@ -19,6 +19,12 @@ sa.LieAlgebraElement = LieAlgebraElement
 # sa.parallel_iter = parallel_iter
 # sa.RESetMapReduce = RESetMapReduce
 
+try:
+    from line_profiler import profile
+except ImportError:
+    profile = lambda *_, **__: lambda fn: fn
+
+
 _bracket_cache = {}
 
 
@@ -65,6 +71,7 @@ class GlobalOp(ABC):
     def bracket_ordered(self, other):
         pass
 
+    @profile
     def bracket_ordered_cached(self, other):
         cache_key = (hash(self), hash(other))
         if cache_key in _bracket_cache:
@@ -116,11 +123,12 @@ class GlobalAlgebra(sa.IndexedGenerators, sa.LieAlgebraWithGenerators):
     def _repr_(self):
         return "Global#Algebra"
 
+    @profile
     def _element_constructor_(self, x):
         """Convert x into an element of this algebra"""
         if type(x) is dict:
-            for k in tuple(x.keys()):
-                if x[k] == 0:
+            for k, v in tuple(x.items()):
+                if v == 0:
                     del x[k]
         elif isinstance(x, GlobalOp):
             x.alg = self

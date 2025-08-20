@@ -17,7 +17,6 @@ from ..tools import (
     extend_linear,
     map_collect_elements,
     map_elements,
-    wrap_logging,
 )
 
 try:
@@ -71,7 +70,7 @@ def normalize_permutation(perm):
 def reduce_permutation(perm, padding=0):
     nontrivial_indices = perm != np.arange(len(perm))
     if not np.any(nontrivial_indices):
-        return np.array([0], dtype=np.int32), (0, len(perm) - 1 - 2 * padding)
+        return np.array([0], dtype=np.int32), 0, len(perm) - 1 - 2 * padding
     offset, end = 0, len(perm)
     while not nontrivial_indices[offset]:
         offset += 1
@@ -82,7 +81,7 @@ def reduce_permutation(perm, padding=0):
     reduced = reduced.astype(np.int32)  # copies as well
     reduced -= offset
     # assert is_valid_permutation(reduced)
-    return reduced, (offset - padding, len(perm) - end - padding)
+    return reduced, offset - padding, len(perm) - end - padding
 
 
 @njit(cache=True)
@@ -195,7 +194,7 @@ class GLNHomogOp(GlobalOp):
         if type(perm) is not np.ndarray:
             perm = normalize_permutation(perm)
         # assert is_valid_permutation(perm)
-        self.data, *_ = reduce_permutation(perm)
+        self.data, _, _ = reduce_permutation(perm)
         self.alg = alg
 
     def __repr__(self):
@@ -221,7 +220,7 @@ class GLNHomogOp(GlobalOp):
         dragged, _ = drag_right_on_left(left_perm, right_perm, ring.one())
 
         final_dict = map_collect_elements(
-            dragged, lambda k, v: (GLNHomogOp(k), ring(v)), ring.zero()
+            dragged, lambda k, v: (GLNHomogOp(k, alg=alg), v), ring.zero()
         )
 
         final = alg(final_dict)
@@ -290,8 +289,7 @@ class GLNBoostOp(GlobalOp):  # XXX THIS CLASS IS DEPRECATED
         if is_reduced_permutation(perm_squeezed):
             return alg(GLNBoostOp(perm_squeezed))
         else:
-            perm_reduced, legs = reduce_permutation(perm, padding=padding)
-            left_legs, right_legs = legs
+            perm_reduced, left_legs, right_legs = reduce_permutation(perm, padding)
             left_legs, right_legs = ring(left_legs), ring(right_legs)
             if symmetric_boost_identification:
                 # the asymmetric identification is, IMO, much more intuitive,
@@ -394,26 +392,34 @@ class GLNBilocalOp(GlobalOp):
                 right_len = max(right_len, len(r.data))
 
             alg = left.parent()
-            accum = alg.zero()
+
+            accum_list = []
             for l, lc in left:
                 for r, rc in right:
                     assert type(l) is GLNHomogOp and type(r) is GLNHomogOp
-                    lx = np.arange(left_len, dtype=int)
-                    rx = np.arange(right_len, dtype=int)
-                    if len(l.data):
-                        lx[: len(l.data)] = l.data
-                    if len(r.data):
-                        rx[: len(r.data)] = r.data
-                    reduced_slashed_list = GLNBilocalOp.reduce_slashed(
-                        lx, 0, rx, 0, alg
-                    )[0]
-                    reduced_slashed = map_collect_elements(
-                        reduced_slashed_list,
-                        lambda k, v: (k, v),
-                        alg.base().zero(),
-                    )
-                    accum += lc * rc * alg(reduced_slashed)
-            return accum
+                    # lx = np.arange(left_len, dtype=int)
+                    # rx = np.arange(right_len, dtype=int)
+                    # if len(l.data):
+                    #     lx[: len(l.data)] = l.data
+                    # if len(r.data):
+                    #     rx[: len(r.data)] = r.data
+                    # reduced_slashed_list = GLNBilocalOp.reduce_slashed(
+                    #     lx, 0, rx, 0, alg
+                    # )[0]
+                    # reduced_slashed = map_collect_elements(
+                    #     reduced_slashed_list,
+                    #     lambda k, v: (k, v),
+                    #     alg.base().zero(),
+                    # )
+                    # accum += lc * rc * alg(reduced_slashed)
+                    bl = GLNBilocalOp(l.data, r.data, alg=alg)
+                    accum_list.append((bl, lc * rc))
+            accum = map_collect_elements(
+                accum_list,
+                lambda k, v: (k, v),
+                alg.base().zero(),
+            )
+            return alg(accum)
 
         else:
             raise NotImplementedError("Bilocalization for " + type(left))
@@ -447,11 +453,8 @@ class GLNBilocalOp(GlobalOp):
         """
         left = normalize_permutation(left)
         rght = normalize_permutation(rght)
-        left_red, left_legs = reduce_permutation(left, padding=lpad)
-        ll_legs, lr_legs = left_legs
-
-        rght_red, rght_legs = reduce_permutation(rght, padding=rpad)
-        rl_legs, rr_legs = rght_legs
+        left_red, ll_legs, lr_legs = reduce_permutation(left, padding=lpad)
+        rght_red, rl_legs, rr_legs = reduce_permutation(rght, padding=rpad)
 
         left_hom, rght_hom = GLNHomogOp(left_red), GLNHomogOp(rght_red)
         primary = GLNBilocalOp(left_red, rght_red)
@@ -578,7 +581,8 @@ class GLNBilocalOp(GlobalOp):
         # )
         quarter = ring.one() / 4
         for ix in [0, 1]:
-            cur = GLNHomogOp(bl_br_comms[ix], alg=alg).bracket(right)
+            cur = GLNHomogOp(bl_br_comms[ix], alg=alg)
+            cur = cur.bracket(right)
             map_elements(
                 cur,
                 accum_antiwrap.append,

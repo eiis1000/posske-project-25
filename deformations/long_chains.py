@@ -1,5 +1,10 @@
 from deformations.tools import extend_to_coeffs
 
+try:
+    from line_profiler import profile
+except ImportError:
+    profile = lambda *_, **__: lambda fn: fn
+
 
 class LongRangeChain:
     def __init__(self, short_range_chain, deformation):
@@ -42,9 +47,12 @@ class LongRangeChain:
         self.ensure_order(k - 1, q)
         cur_charge = self.charge_tower[q]
         gen = self.deform_gen()
-        self.charge_tower[q] = cur_charge + extend_to_coeffs(
-            lambda x: (x * self.deform_param ** (k - 1)).integral()
-        )(self.i_ * self.bracket_at_order(gen, cur_charge, k - 1))
+        to_integrate = self.i_ * self.bracket_at_order(gen, cur_charge, k - 1)
+        # integral = extend_to_coeffs(
+        #     lambda x: (x * self.deform_param ** (k - 1)).integral()
+        # )(to_integrate)
+        integral = to_integrate * ((self.deform_param**k) / k)
+        self.charge_tower[q] = cur_charge + integral
         if not self.homogeneity(q):
             raise ValueError(
                 # print(
@@ -89,6 +97,7 @@ class LongRangeChain:
         return res
 
     @staticmethod
+    @profile
     def bracket_at_order(left, right, order):
         if type(left) is not list:
             left = LongRangeChain.extract_orders(left)
@@ -131,6 +140,7 @@ class LongRangeChain:
         return True
 
     @staticmethod
+    @profile
     def extract_orders(q):
         if q == 0:
             return [0]

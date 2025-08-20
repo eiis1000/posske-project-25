@@ -41,7 +41,9 @@ def map_elements(input, fn, item_map):
 @profile
 def _map_collect_elements_update_proto(kv, zero, output):
     k, v = kv
-    output[k] = output.get(k, zero) + v
+    tmp = output.get(k, zero)
+    tmp = tmp + v
+    output[k] = tmp
 
 
 @profile
