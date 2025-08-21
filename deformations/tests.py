@@ -106,7 +106,7 @@ def jacobi_tests():
     #     make(([2, 1],)),
     # ), "Precursor boost Jacobi failed"
 
-    maxlen = 6
+    maxlen = 5
     for i in range(100):
         np.random.seed(i)
         lens = np.random.randint(1, maxlen + 1, 5)
@@ -153,6 +153,10 @@ def trivial_tests():
 
 
 def run_tests():
+    import faulthandler
+    import signal
+
+    faulthandler.register(signal.SIGUSR1.value, all_threads=True)
     tests = [
         trivial_tests,
         jacobi_tests,

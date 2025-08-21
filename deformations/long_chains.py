@@ -1,4 +1,4 @@
-from deformations.tools import extend_to_coeffs
+from deformations.tools import extend_to_coeffs, map_collect_elements
 
 try:
     from line_profiler import profile
@@ -103,11 +103,11 @@ class LongRangeChain:
             left = LongRangeChain.extract_orders(left)
         if type(right) is not list:
             right = LongRangeChain.extract_orders(right)
-        res = 0
+        res = []
         for k in range(order + 1):
             if k < len(left) and order - k < len(right):
-                res += left[k].bracket(right[order - k])
-        return res
+                res.append(left[k].bracket(right[order - k]))
+        return sum(res)
 
     def homogeneity(self, q=None):
         if q is None:
@@ -143,12 +143,26 @@ class LongRangeChain:
     @profile
     def extract_orders(q):
         if q == 0:
-            return [0]
-        terms = [0]
+            return [q]
+
+        terms_lists = [[]]
         for el, coeff in q:
-            terms += [0] * (coeff.degree() + 1 - len(terms))
-            for d in range(len(terms)):
-                terms[d] += coeff.coefficient(d) * q.parent()(el)
+            coeff_deg = coeff.degree()
+            while coeff_deg >= len(terms_lists):
+                terms_lists += [[]]
+            for d in range(coeff_deg + 1):
+                coeff_dict = coeff.dict()
+                coeff_d = coeff_dict.get(d, None)
+                if coeff_d is not None:
+                    terms_lists[d].append((el, coeff_d))
+
+        alg = q.parent()
+        zero = alg.base().zero()
+        terms = []
+        for d in range(len(terms_lists)):
+            mapped = map_collect_elements(terms_lists[d], lambda k, v: (k, v), zero)
+            terms.append(alg(mapped))
+
         return terms
 
     def truncate_order(self, q, order=None):

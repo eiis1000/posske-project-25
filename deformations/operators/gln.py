@@ -144,7 +144,6 @@ def _drag_right_on_left(left_perm, right_perm):
     return pos_accum, neg_accum, pos_flags, neg_flags, padding
 
 
-@profile
 def drag_right_on_left(left_perm, right_perm, one=1):
     neg_one = -one
     pos, neg, pos_flags, neg_flags, padding = _drag_right_on_left(left_perm, right_perm)

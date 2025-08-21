@@ -75,8 +75,8 @@ def main():
     # #     str(lrc.bracket_to_order(alg.boost(Q(3)), Q(4), 2), 2)[:100],
     # #     " + ...",
     # # )
-    # Q = lrc.Q
-    # breakpoint()
+    Q = lrc.Q
+    breakpoint()
 
 
 import pdb
