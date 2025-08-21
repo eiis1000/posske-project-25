@@ -47,16 +47,14 @@ class LongRangeChain:
         self.ensure_order(k - 1, q)
         cur_charge = self.charge_tower[q]
         gen = self.deform_gen()
-        to_integrate = self.i_ * self.bracket_at_order(gen, cur_charge, k - 1)
+        integrand = self.i_ * self.bracket_at_order(gen, cur_charge, k - 1)
         # integral = extend_to_coeffs(
         #     lambda x: (x * self.deform_param ** (k - 1)).integral()
-        # )(to_integrate)
-        integral = to_integrate * ((self.deform_param**k) / k)
+        # )(integrand)
+        integral = integrand * ((self.deform_param**k) / k)
         self.charge_tower[q] = cur_charge + integral
         if not self.homogeneity(q):
             raise ValueError(
-                # print(
-                #     "SUPPRESSING ERROR: "
                 f"Homogeneity check failed for charge {q} at order {k}. "
                 "This may indicate an inconsistency in the algebra. "
                 f"Q_{q} string starts with {str(self.charge_tower[q])[:200]}..."

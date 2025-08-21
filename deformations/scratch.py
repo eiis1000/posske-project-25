@@ -54,7 +54,7 @@ def main():
     deform = (2, 3)  # C(1)
     # deform = (2, 4)  # T(1)
     lrc = LongRangeChain(chain, deform)
-    lrc.ensure_order(3)
+    # lrc.ensure_order(3)
     # lrc.ensure_order(3)
     print("Q2: ", lrc.format(lrc.Q(2)))
     print("Q3: ", lrc.format(lrc.Q(3)))

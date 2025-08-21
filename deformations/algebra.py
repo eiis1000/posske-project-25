@@ -5,19 +5,16 @@ import numpy as np
 import sage.all as sa
 from sage.algebras.lie_algebras.lie_algebra import LieAlgebraWithGenerators
 from sage.algebras.lie_algebras.lie_algebra_element import LieAlgebraElement
+from sage.parallel.decorate import parallel
 from sage.structure.indexed_generators import IndexedGenerators
 
 from .config import enable_logging, log_basis_bracket
 from .tools import compose, wrap_logging
 
-# from sage.parallel.multiprocessing_sage import parallel_iter
-# from sage.parallel.map_reduce import RESetMapReduce
-
-sa.IndexedGenerators = IndexedGenerators
 sa.LieAlgebraWithGenerators = LieAlgebraWithGenerators
 sa.LieAlgebraElement = LieAlgebraElement
-# sa.parallel_iter = parallel_iter
-# sa.RESetMapReduce = RESetMapReduce
+sa.parallel = parallel
+sa.IndexedGenerators = IndexedGenerators
 
 try:
     from line_profiler import profile
@@ -83,12 +80,26 @@ class GlobalOp(ABC):
     def _bracket_(self, other):
         assert isinstance(other, GlobalOp)
         if other.sort_order() < self.sort_order():
-            return {k: -v for k, v in other.bracket_ordered_cached(self)}
+            bkt = other.bracket_ordered_cached(self)
+            if type(bkt) is dict:
+                return {k: -v for k, v in bkt.items()}
+            else:
+                return -bkt
         else:
             return self.bracket_ordered_cached(other)
 
     def bracket(self, other):
         return self._bracket_(other)
+
+    @parallel(p_iter="fork", ncpus=16)
+    def bracket_parallel(self, other, scalar):
+        cur = self._bracket_(other)
+        if scalar is not None:
+            if type(cur) is dict:
+                cur = {k: v * scalar for k, v in cur.items()}
+            else:
+                cur = cur * scalar
+        return cur
 
     def sort_order(self):
         return (-self.hardness(), *self.selfsort_tuple())
@@ -142,20 +153,18 @@ class GlobalAlgebra(sa.IndexedGenerators, sa.LieAlgebraWithGenerators):
         return (self.bilocalize(ones, Q) - self.bilocalize(Q, ones)) / 2
 
     class Element(sa.LieAlgebraElement):
-        # def _bracket_(self, other):
-        #     # left_items = {k: v for k, v in self}
-        #     # right_items = {k: v for k, v in other}
-        #     collected_items = [
-        #         (k1, k2, v1 * v2) for (k1, v1) in self for (k2, v2) in other
-        #     ]
-        #     alg = self.parent()
-        #     S = RESetMapReduce(
-        #         roots=collected_items,
-        #         children=lambda _: (),
-        #         map_function=lambda x: x[2] * alg(GlobalOp._bracket_(x[0], x[1])),
-        #         reduce_function=lambda x, y: x + y,
-        #         reduce_init=alg.zero(),
-        #     )
-        #     return S.run()
+        @profile
+        def _bracket_(self, other):
+            collected_items = [
+                (k1, k2, v1 * v2) for (k1, v1) in self for (k2, v2) in other
+            ]
+
+            alg = self.parent()
+            brackets_genexpr = GlobalOp.bracket_parallel(collected_items)
+            brackets_list = list(brackets_genexpr)
+            assert len(brackets_list) == len(collected_items)
+            brackets_list = [p[1] for p in brackets_list]
+            brackets_list = [r for r in brackets_list if not r.is_zero()]
+            return alg.sum(brackets_list)
 
         pass
