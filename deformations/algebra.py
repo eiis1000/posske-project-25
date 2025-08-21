@@ -96,17 +96,6 @@ class GlobalOp(ABC):
     def bracket(self, other, cache=True):
         return self._bracket_(other, cache=cache)
 
-    @parallel(p_iter="fork", ncpus=16)
-    def bracket_parallel(self, other, scalar):
-        bkt = self._bracket_(other, cache=False)
-        if scalar is None:
-            res = bkt
-        elif type(bkt) is dict:
-            res = {k: v * scalar for k, v in bkt.items()}
-        else:
-            res = bkt * scalar
-        return res, ((hash(self), hash(other)), bkt)
-
     def sort_order(self):
         return (-self.hardness(), *self.selfsort_tuple())
 
@@ -163,16 +152,26 @@ class GlobalAlgebra(sa.IndexedGenerators, sa.LieAlgebraWithGenerators):
     class Element(sa.LieAlgebraElement):
         @profile
         def _bracket_(self, other):
-            collected_items = [
-                (k1, k2, v1 * v2) for (k1, v1) in self for (k2, v2) in other
-            ]
+            if len(self) < len(other):
+                collected_items = [
+                    (k1, [(k2, v1 * v2) for (k2, v2) in other]) for (k1, v1) in self
+                ]
+            else:
+                collected_items = [
+                    (k2, [(k1, -v1 * v2) for (k1, v1) in self]) for (k2, v2) in other
+                ]
+            total_num = len(self) * len(other)
 
             alg = self.parent()
-            if len(collected_items) > 300:  # total guess
-                brackets_genexpr = GlobalOp.bracket_parallel(collected_items)
-                brackets_list = list(brackets_genexpr)
-                to_cache = [p[1][1] for p in brackets_list]
-                brackets_list = [p[1][0] for p in brackets_list]
+
+            # if len(collected_items) > 40:  # total guess
+            if False:  # FOR SOME REASON USING PARALLEL GIVES THE WRONG ANSWER. KEEP IT DISABLED.
+                brackets_genexpr = self._bracket_parallel_helper(collected_items)
+                results_list = [ap[1] for ap in brackets_genexpr]
+                to_cache = [p[1] for p in results_list]
+                to_cache = [p for l in to_cache for p in l]
+                brackets_list = [p[0] for p in results_list]
+                brackets_list = [p for l in brackets_list for p in l]
                 for r in brackets_list:
                     if not hasattr(r, "is_zero"):
                         raise TypeError(
@@ -192,8 +191,25 @@ class GlobalAlgebra(sa.IndexedGenerators, sa.LieAlgebraWithGenerators):
                     for (k1, v1) in self
                     for (k2, v2) in other
                 ]
-            assert len(brackets_list) == len(collected_items)
             brackets_list = [r for r in brackets_list if not r.is_zero()]
             return alg.sum(brackets_list)
+
+        @staticmethod
+        @parallel(p_iter="fork", ncpus=16)
+        def _bracket_parallel_helper(left, pairlist):
+            to_cache = []
+            results = []
+            l = left
+            for r, scalar in pairlist:
+                cur = GlobalOp.bracket(l, r)
+                if scalar is not None:
+                    if type(cur) is dict:
+                        cur = {k: v * scalar for k, v in cur.items()}
+                else:
+                    cur *= scalar
+                to_cache.append(((hash(l), hash(r)), cur))
+                if len(cur) != 0:
+                    results.append(cur)
+            return results, to_cache
 
         pass
