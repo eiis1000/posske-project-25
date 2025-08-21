@@ -22,12 +22,10 @@ except ImportError:
     profile = lambda *_, **__: lambda fn: fn
 
 
-_bracket_cache = {}
-
-
 @total_ordering
 class GlobalOp(ABC):
-    _hash = None
+    _hash = None  # will get shadowed by local variable
+    _bracket_cache = {}  # actually global
 
     def __hash__(self):
         if self._hash is not None:
@@ -69,15 +67,22 @@ class GlobalOp(ABC):
         pass
 
     @profile
-    def bracket_ordered_cached(self, other):
+    def bracket_ordered_cached(self, other, cache=True):
         cache_key = (hash(self), hash(other))
-        if cache_key in _bracket_cache:
-            return _bracket_cache[cache_key]
+        if cache_key in GlobalOp._bracket_cache:
+            return GlobalOp._bracket_cache[cache_key]
         result = self.bracket_ordered(other)
-        _bracket_cache[cache_key] = result
+        if cache:
+            GlobalOp._bracket_cache[cache_key] = result
         return result
 
-    def _bracket_(self, other):
+    @staticmethod
+    def update_bracket_cache(kv_list):
+        for cache_key, result in kv_list:
+            if cache_key not in GlobalOp._bracket_cache:
+                GlobalOp._bracket_cache[cache_key] = result
+
+    def _bracket_(self, other, cache=True):
         assert isinstance(other, GlobalOp)
         if other.sort_order() < self.sort_order():
             bkt = other.bracket_ordered_cached(self)
@@ -88,18 +93,19 @@ class GlobalOp(ABC):
         else:
             return self.bracket_ordered_cached(other)
 
-    def bracket(self, other):
-        return self._bracket_(other)
+    def bracket(self, other, cache=True):
+        return self._bracket_(other, cache=cache)
 
     @parallel(p_iter="fork", ncpus=16)
     def bracket_parallel(self, other, scalar):
-        cur = self._bracket_(other)
-        if scalar is not None:
-            if type(cur) is dict:
-                cur = {k: v * scalar for k, v in cur.items()}
-            else:
-                cur = cur * scalar
-        return cur
+        bkt = self._bracket_(other, cache=False)
+        if scalar is None:
+            res = bkt
+        elif type(bkt) is dict:
+            res = {k: v * scalar for k, v in bkt.items()}
+        else:
+            res = bkt * scalar
+        return res, ((hash(self), hash(other)), bkt)
 
     def sort_order(self):
         return (-self.hardness(), *self.selfsort_tuple())
@@ -144,6 +150,8 @@ class GlobalAlgebra(sa.IndexedGenerators, sa.LieAlgebraWithGenerators):
         elif isinstance(x, GlobalOp):
             x.alg = self
             x = {x: self.ring(1)}
+        elif x == 0:
+            return self.zero()
         else:
             raise TypeError(f"Cannot convert {type(x)} to an element of GlobalAlgebra.")
         return sa.LieAlgebraWithGenerators._element_constructor_(self, x)
@@ -160,10 +168,31 @@ class GlobalAlgebra(sa.IndexedGenerators, sa.LieAlgebraWithGenerators):
             ]
 
             alg = self.parent()
-            brackets_genexpr = GlobalOp.bracket_parallel(collected_items)
-            brackets_list = list(brackets_genexpr)
+            if len(collected_items) > 300:  # total guess
+                brackets_genexpr = GlobalOp.bracket_parallel(collected_items)
+                brackets_list = list(brackets_genexpr)
+                to_cache = [p[1][1] for p in brackets_list]
+                brackets_list = [p[1][0] for p in brackets_list]
+                for r in brackets_list:
+                    if not hasattr(r, "is_zero"):
+                        raise TypeError(
+                            f"Something is wrong with the parallelization of the bracket operation. One element is {r} of type {type(r)}"
+                        )
+                # for speed comparison:
+                brackets_list_ = [
+                    GlobalOp.bracket(k1, k2) * (v1 * v2)
+                    for (k1, v1) in self
+                    for (k2, v2) in other
+                ]
+
+                GlobalOp.update_bracket_cache(to_cache)
+            else:
+                brackets_list = [
+                    GlobalOp.bracket(k1, k2) * (v1 * v2)
+                    for (k1, v1) in self
+                    for (k2, v2) in other
+                ]
             assert len(brackets_list) == len(collected_items)
-            brackets_list = [p[1] for p in brackets_list]
             brackets_list = [r for r in brackets_list if not r.is_zero()]
             return alg.sum(brackets_list)
 
