@@ -40,20 +40,28 @@ def map_elements(input, fn, item_map):
         fn((mapped_k, mapped_v))
 
 
-def _map_collect_elements_update_proto(kv, zero, output):
+def _map_collect_elements_update_proto(kv, output):
     k, v = kv
-    tmp = output.get(k, zero)
-    tmp = tmp + v
-    output[k] = tmp
+    l = output.get(k, None)
+    if l is None:
+        output[k] = [v]
+    else:
+        l.append(v)
 
 
 @profile
 def map_collect_elements(input, item_map, zero=0):
-    output = {}
+    output_lists = {}
 
     map_elements(
-        input, lambda kv: _map_collect_elements_update_proto(kv, zero, output), item_map
+        input,
+        lambda kv: _map_collect_elements_update_proto(kv, output_lists),
+        item_map,
     )
+
+    output = {}
+    for k, vlist in output_lists.items():
+        output[k] = zero.parent().sum(vlist)
 
     return output
 
