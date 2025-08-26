@@ -113,18 +113,22 @@ class GlobalOp(ABC):
 
 
 class GlobalAlgebra(sa.IndexedGenerators, sa.LieAlgebraWithGenerators):
-    def __init__(self, bilocalize, boost=None, make=None):
-        self.boost_term = boost
+    def __init__(self, bilocalize, boost=None, make=None, ring=None, i_=None):
+        # raw_ring = sa.QQbar
+        # self.i_ = self.raw_ring.gen()
+        if ring is None:
+            raw_ring = (sa.QQ(1) * sa.I).parent()
+            self.i_ = raw_ring.gen()
+            ring = raw_ring
+        else:
+            assert i_ is not None
+            self.i_ = i_
+        self.ring = ring
+        cat = sa.LieAlgebras(ring).WithBasis()
+
         self.boost = compose(self, boost) if boost is not None else self.bilocal_boost
         self.bilocalize = compose(self, bilocalize)
         self.make = compose(self, make)
-        # raw_ring = sa.QQbar
-        # self.i_ = self.raw_ring.gen()
-        raw_ring = (sa.QQ(1) * sa.I).parent()
-        self.i_ = raw_ring.gen()
-        ring = sa.PolynomialRing(raw_ring, "λ")
-        self.ring = ring
-        cat = sa.LieAlgebras(ring).WithBasis()
 
         self._repr_term = str
         self.bracket_on_basis = compose(self, GlobalOp._bracket_)
@@ -135,7 +139,7 @@ class GlobalAlgebra(sa.IndexedGenerators, sa.LieAlgebraWithGenerators):
         self.print_options(prefix="", bracket="")
 
     def _repr_(self):
-        return "Global#Algebra"
+        return "GlobalAlgebra over " + str(self.ring)
 
     @profile
     def _element_constructor_(self, x):
@@ -149,6 +153,8 @@ class GlobalAlgebra(sa.IndexedGenerators, sa.LieAlgebraWithGenerators):
             x = {x: self.ring(1)}
         elif is_zero(x):
             return self.zero()
+        elif hasattr(x, "parent") and isinstance(x.parent(), GlobalAlgebra):
+            return self._element_constructor_({k.set_alg(self): v for k, v in x})
         else:
             raise TypeError(f"Cannot convert {type(x)} to an element of GlobalAlgebra.")
         return sa.LieAlgebraWithGenerators._element_constructor_(self, x)
@@ -157,7 +163,23 @@ class GlobalAlgebra(sa.IndexedGenerators, sa.LieAlgebraWithGenerators):
         ones = self.make([1])
         return (self.bilocalize(ones, Q) - self.bilocalize(Q, ones)) / 2
 
+    def with_variable(self, name="λ"):
+        raw_ring = self.ring
+        if name in [str(g) for g in raw_ring.gens()]:
+            old_name, name = name, name + str(len(raw_ring.gens()))
+            print(
+                f"{old_name} already in generator list {raw_ring.gens()}, using {name} instead."
+            )
+        nested_ring = sa.PolynomialRing(raw_ring, 1, name)
+        var = nested_ring.gen()
+        ring = nested_ring.flattening_morphism().codomain()
+        alg = GlobalAlgebra(
+            self.bilocalize, boost=self.boost, make=self.make, ring=ring, i_=self.i_
+        )
+        return alg, var
+
     class Element(sa.LieAlgebraElement):
+        @profile
         def _bracket_(self, other):
             alg = self.parent()
             brackets_list = [

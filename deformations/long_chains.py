@@ -1,3 +1,4 @@
+from deformations.short_chains import SpinChain
 from deformations.tools import extend_to_coeffs, map_collect_elements
 
 try:
@@ -6,13 +7,12 @@ except ImportError:
     profile = lambda *_, **__: lambda fn: fn
 
 
-class LongRangeChain:
-    def __init__(self, short_range_chain, deformation):
-        self.base_chain = short_range_chain
-        self.alg = short_range_chain.alg
+class DeformedChain(SpinChain):
+    def __init__(self, base_chain, deformation, deform_param="λ"):
+        self.base_chain = base_chain
+        self.alg, self.param = base_chain.algebra().with_variable(deform_param)
         self.i_ = self.alg.i_
-        self.deform_param = self.alg.ring.gen()
-        self.charge_tower = short_range_chain.charge_tower.copy()
+        self.charge_tower = [None] + [self.alg(q) for q in base_chain.charge_tower[1:]]
         self.orders = [None] + [0] * (len(self.charge_tower) - 1)
         self.deform_lam = self.deformation_lambda(deformation)
         self.ensure_filled(max(deformation))
@@ -27,7 +27,7 @@ class LongRangeChain:
             return
         self.ensure_filled(q - 1)
         self.orders.append(0)
-        self.charge_tower.append(self.base_chain.Q(q))
+        self.charge_tower.append(self.alg(self.base_chain.Q(q)))
         self.ensure_order(self.orders[1], q=q)
 
     def order(self):
@@ -47,11 +47,10 @@ class LongRangeChain:
         self.ensure_order(k - 1, q)
         cur_charge = self.charge_tower[q]
         gen = self.deform_gen()
-        integrand = self.i_ * self.bracket_at_order(gen, cur_charge, k - 1)
-        # integral = extend_to_coeffs(
-        #     lambda x: (x * self.deform_param ** (k - 1)).integral()
-        # )(integrand)
-        integral = integrand * ((self.deform_param**k) / k)
+        integrand = self.i_ * self.bracket_at_order(
+            gen, cur_charge, k - 1, promote=True
+        )
+        integral = integrand * ((self.param**k) / k)
         self.charge_tower[q] = cur_charge + integral
         if not self.homogeneity(q):
             raise ValueError(
@@ -82,31 +81,32 @@ class LongRangeChain:
     def deform_gen(self):
         return self.deform_lam(self)
 
-    @staticmethod
-    def bracket_to_order(left, right, order=None):
-        left_ords = LongRangeChain.extract_orders(left)
-        right_ords = LongRangeChain.extract_orders(right)
+    def bracket_to_order(self, left, right, order=None):
+        left_ords = self.extract_orders(left)
+        right_ords = self.extract_orders(right)
         if order is None:
-            order = max(len(left_ords) - 1, len(right_ords) - 1)
+            order = self.order()
         res = 0
-        lam = left.parent().base_ring().gen()
-        assert lam != 0
         for k in range(order + 1):
-            res += lam**k * LongRangeChain.bracket_at_order(left_ords, right_ords, k)
+            res += self.param**k * self.bracket_at_order(
+                left_ords, right_ords, k, promote=True
+            )
         return res
 
-    @staticmethod
     @profile
-    def bracket_at_order(left, right, order):
+    def bracket_at_order(self, left, right, order, promote=True):
         if type(left) is not list:
-            left = LongRangeChain.extract_orders(left)
+            left = self.extract_orders(left)
         if type(right) is not list:
-            right = LongRangeChain.extract_orders(right)
+            right = self.extract_orders(right)
         res = []
         for k in range(order + 1):
             if k < len(left) and order - k < len(right):
-                res.append(left[k].bracket(right[order - k]))
-        return sum(res)
+                res.append(self.base_chain.bracket(left[k], right[order - k]))
+        if promote:
+            return self.alg.sum(res)
+        else:
+            return self.base_chain.algebra().sum(res)
 
     def homogeneity(self, q=None):
         if q is None:
@@ -138,46 +138,60 @@ class LongRangeChain:
                     return False
         return True
 
-    @staticmethod
-    def extract_orders(q):
+    def extract_orders(self, q):
         if q == 0:
             return [q]
 
         terms_lists = [[]]
+        ring = self.alg.ring
+        lower_ring = self.base_chain.algebra().ring
         for el, coeff in q:
-            coeff_deg = coeff.degree()
+            coeff_deg = ring(coeff).degrees()[-1]
+            if coeff_deg == 0:
+                terms_lists[0].append((el, coeff))
+                continue
+            other_gens = lower_ring.gens()
             while coeff_deg >= len(terms_lists):
                 terms_lists += [[]]
-            for d in range(coeff_deg + 1):
-                coeff_dict = coeff.dict()
-                coeff_d = coeff_dict.get(d, None)
-                if coeff_d is not None:
-                    terms_lists[d].append((el, coeff_d))
+            processed = []
+            for k, v in coeff.dict().items():
+                neg_one = len(k) - 1  # sage can't [-1]
+                degree = k[neg_one]
+                other_degrees = k[:neg_one]
+                acc = lower_ring(v)
+                for d, g in zip(other_degrees, other_gens):
+                    acc *= g**d
+                processed.append((degree, acc))
+            for d, coeff_d in processed:
+                terms_lists[d].append((el, coeff_d))
 
-        alg = q.parent()
-        zero = alg.base().zero()
+        zero = lower_ring.zero()
         terms = []
         for d in range(len(terms_lists)):
             mapped = map_collect_elements(terms_lists[d], lambda k, v: (k, v), zero)
-            terms.append(alg(mapped))
+            terms.append(self.base_chain.algebra()(mapped))
 
         return terms
 
     def truncate_order(self, q, order=None):
         if order is None:
             order = self.order()
-        lam = q.parent().base_ring().gen()
-        return extend_to_coeffs(lambda x: x % (lam ** (order + 1)))(q)
+        return extend_to_coeffs(lambda x: x % (self.param ** (order + 1)))(q)
 
-    @staticmethod
-    def format(q, order=None):
-        if order is not None:
-            q = LongRangeChain.truncate_order(None, q, order)
-        terms = LongRangeChain.extract_orders(q)
+    def format(self, q, order=None):
+        if order is None:
+            order = self.order()
+        terms = self.extract_orders(q)
         res = str(terms[0])
         for k in range(1, len(terms)):
             if terms[k] != 0:
-                res += f" + λ^{k}*({terms[k]})"
+                res += f" + {self.param}^{k}*({terms[k]})"
         max_order = max(len(terms) - 1, order or 0)
-        res += f" + O(λ^{max_order + 1})"
+        res += f" + O({self.param}^{max_order + 1})"
         return res
+
+    def bracket(self, left, right):
+        return self.bracket_to_order(left, right, self.order())
+
+    def algebra(self):
+        return self.alg

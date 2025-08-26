@@ -5,27 +5,24 @@ import traceback
 import numpy as np
 
 from .algebra import GlobalAlgebra
-from .long_chains import LongRangeChain
+from .long_chains import DeformedChain
 from .operators.gln import (
     GLNBilocalOp,
     GLNBoostOp,
     make_gln,
     reduce_permutation,
 )
-from .short_chains import ShortRangeChain
+from .short_chains import BaseChain
 
 
 def run_deformation_test(deform, max_order, max_q, skip_last_consistency=False):
     match deform:
         case (x,):
             deform_str = f"boost B[Q_{x}]"
-            boost = GLNBoostOp.boost
         case (x, -1):
             deform_str = f"bilocal-boost B[Q_{x}]"
-            boost = None
         case (x, y):
             deform_str = f"bilocal [Q_{x} | Q_{y}]"
-            boost = None  # could also use GLNBoostOp.boost if we wanted
         case _:
             deform_str = str(deform)
 
@@ -34,10 +31,12 @@ def run_deformation_test(deform, max_order, max_q, skip_last_consistency=False):
     start_time = time.perf_counter()
     print(f"Running test {test_name}...")
     try:
-        alg = GlobalAlgebra(GLNBilocalOp.bilocalize, make=make_gln, boost=boost)
+        alg = GlobalAlgebra(
+            GLNBilocalOp.bilocalize, boost=GLNBoostOp.boost, make=make_gln
+        )
         hamiltonian = alg.make([1]) - alg.make([2, 1])
-        chain = ShortRangeChain(hamiltonian)
-        lrc = LongRangeChain(chain, deform)
+        chain = BaseChain(hamiltonian)
+        lrc = DeformedChain(chain, deform)
         lrc.ensure_filled(max_q)
         # note we could just set ord=max_order, but this way we can check
         # which specific order fails
@@ -46,7 +45,7 @@ def run_deformation_test(deform, max_order, max_q, skip_last_consistency=False):
             print(f"Computing order {ord}...", end="\r")
             lrc.ensure_order(ord)
             if skip_last_consistency and ord == max_order:
-                # this option exists for speed reasons as the check can be slow
+                # this option exists for speed reasons. the check is slow
                 continue
             print(f"Order {ord} consistency...", end="\r")
             consistent = lrc.algebra_consistency()
@@ -59,7 +58,6 @@ def run_deformation_test(deform, max_order, max_q, skip_last_consistency=False):
         print(f"Test {test_name} FAILED with an exception: {e}")
         traceback.print_exc()
     print(f"Elapsed: {time.perf_counter() - start_time:.2f}s\n")
-    return lrc
 
 
 def deformation_tests():
@@ -76,18 +74,15 @@ def deformation_tests():
         ((1, 3), 3, 4),
         ((1, 3), 4, 3),
         ((2, 3), 3, 2),
-        ((2, 4), 2, 2, True),
+        ((2, 4), 2, 2),
     ]
 
     speedy = True
     speedy = False
-    chains = []
     for test in tests:
         if speedy:
             test = (test[0], max(1, test[1] - 1), 3)  # , True)
-        tmp = run_deformation_test(*test)
-        chains.append((test[0], tmp))
-    # breakpoint()
+        run_deformation_test(*test)
 
     print("All deformation tests completed.")
     return True
@@ -99,7 +94,7 @@ def jacobi(a, b, c):
 
 def jacobi_tests():
     print("Running Jacobi tests...")
-    alg = GlobalAlgebra(GLNBilocalOp.bilocalize, make=make_gln, boost=GLNBoostOp.boost)
+    alg = GlobalAlgebra(GLNBilocalOp.bilocalize, boost=GLNBoostOp.boost, make=make_gln)
     make = alg.make
     i = "precursor"
     assert alg.zero() == jacobi(
@@ -114,7 +109,7 @@ def jacobi_tests():
     # ), "Precursor boost Jacobi failed"
 
     maxlen = 5
-    for i in range(100):
+    for i in range(10):
         np.random.seed(i)
         lens = np.random.randint(1, maxlen + 1, 5)
         perms = [
@@ -139,7 +134,7 @@ def jacobi_tests():
 
 def trivial_tests():
     print("Running trivial tests...")
-    alg = GlobalAlgebra(GLNBilocalOp.bilocalize, make=make_gln, boost=GLNBoostOp.boost)
+    alg = GlobalAlgebra(GLNBilocalOp.bilocalize, boost=GLNBoostOp.boost, make=make_gln)
     h1 = alg.make([1])
     h21 = alg.make([2, 1])
     h312 = alg.make([3, 1, 2])

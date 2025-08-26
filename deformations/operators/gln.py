@@ -296,7 +296,7 @@ class GLNBoostOp(GlobalOp):  # XXX THIS CLASS IS DEPRECATED
         perm = normalize_permutation(perm)
         perm_squeezed = perm[padding : len(perm) - padding] - padding
         if is_reduced_permutation(perm_squeezed):
-            return (GLNBoostOp(perm_squeezed), 1)
+            return [(GLNBoostOp(perm_squeezed), 1)]
         else:
             perm_reduced, left_legs, right_legs = reduce_permutation(perm, padding)
             left_legs, right_legs = ring(left_legs), ring(right_legs)
@@ -366,8 +366,7 @@ class GLNBilocalOp(GlobalOp):
         return 100
 
     def bracket_ordered(self, other):
-        if type(other) is not GLNHomogOp:
-            raise NotImplementedError()
+        assert type(other) is GLNHomogOp
         return self.bracket_bilocal_homog(self, other)
 
     def selfsort_tuple(self):

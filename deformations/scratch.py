@@ -1,8 +1,8 @@
 from .algebra import GlobalAlgebra
-from .long_chains import LongRangeChain
+from .long_chains import DeformedChain
 from .operators.gln import GLNBilocalOp, GLNBoostOp, GLNHomogOp, make_gln
 from .sage_proxy import sa  # initializes properly
-from .short_chains import ShortRangeChain
+from .short_chains import BaseChain
 
 
 def main():
@@ -18,7 +18,7 @@ def main():
     hamiltonian = alg.make([1]) - alg.make([2, 1])
     # print("Test commutator:", alg.bracket(test_perm, hamiltonian))
 
-    chain = ShortRangeChain(hamiltonian)  # , logging=True)
+    chain = BaseChain(hamiltonian)  # , logging=True)
     # chain.ensure_filled(6)
 
     # deformation_top = 6
@@ -53,7 +53,7 @@ def main():
     # deform = (1, 3)  # P(4)
     deform = (2, 3)  # C(1)
     # deform = (2, 4)  # T(1)
-    lrc = LongRangeChain(chain, deform)
+    lrc = DeformedChain(chain, deform)
     # lrc.ensure_order(3)
     # lrc.ensure_order(3)
     print("Q2: ", lrc.format(lrc.Q(2)))
@@ -76,15 +76,16 @@ def main():
     # #     " + ...",
     # # )
     Q = lrc.Q
+    lrc.ensure_order(1)
+    lrcbl = DeformedChain(lrc, (3, -1))
     breakpoint()
-    lrcbl = LongRangeChain(chain, (3, -1))
-    lrcbl.ensure_order(4)
-    chain.Q(2)
-    lrcbs = LongRangeChain(chain, (3,))
-    lrcbs.ensure_order(4)
-    diff = lrcbl.Q(2) - lrcbs.Q(2)
-    for i in range(5):
-        print(len(lrc.truncate_order(diff, i)))
+    lrcbl.ensure_order(1)
+    # chain.Q(2)
+    # lrcbs = DeformedChain(chain, (3,))
+    # lrcbs.ensure_order(4)
+    # diff = lrcbl.Q(2) - lrcbs.Q(2)
+    # for i in range(5):
+    #     print(len(lrc.truncate_order(diff, i)))
     breakpoint()
 
 

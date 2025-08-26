@@ -1,7 +1,21 @@
-import sage.all as sa
+from abc import ABC, abstractmethod
 
 
-class ShortRangeChain:
+class SpinChain(ABC):
+    @abstractmethod
+    def Q(self, k):
+        pass
+
+    @abstractmethod
+    def bracket(self, left, right):
+        pass
+
+    @abstractmethod
+    def algebra(self):
+        pass
+
+
+class BaseChain(SpinChain):
     def __init__(self, hamiltonian, logging=False):
         self.hamiltonian = hamiltonian
         self.alg = hamiltonian.parent()
@@ -32,7 +46,14 @@ class ShortRangeChain:
         if self.logging:
             print(f"Q_{k}: 1/{k - 1}*({(k - 1) * self.charge_tower[k]})")
 
+    def bracket(self, left, right):
+        return left.bracket(right)
+
+    def algebra(self):
+        return self.alg
+
     def first_order_boost_deformation_reduced(self, r, k):
+        raise DeprecationWarning()
         # implements eq (B.4)
         BQ, Q = self.BQ, self.Q
         return (k - 1) * self.i_ * BQ(k).bracket(Q(r)) + (r + k - 2) * Q(r + k - 1)
