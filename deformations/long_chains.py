@@ -59,6 +59,7 @@ class LongRangeChain:
                 "This may indicate an inconsistency in the algebra. "
                 f"Q_{q} string starts with {str(self.charge_tower[q])[:200]}..."
             )
+        print(f"Charge {q} at order {k} has {len(self.charge_tower[q])} terms.")
         self.orders[q] = k
 
     def deformation_lambda(self, deformation):
@@ -138,7 +139,6 @@ class LongRangeChain:
         return True
 
     @staticmethod
-    @profile
     def extract_orders(q):
         if q == 0:
             return [q]

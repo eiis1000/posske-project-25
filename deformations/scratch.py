@@ -8,8 +8,8 @@ from .short_chains import ShortRangeChain
 def main():
     # definitions for repl convenience
 
-    alg = GlobalAlgebra(GLNBoostOp.boost, GLNBilocalOp.bilocalize, make=make_gln)
-    # alg = GlobalAlgebra(None, GLNBilocalOp.bilocalize, make=make_gln) # bilocal boost
+    alg = GlobalAlgebra(GLNBilocalOp.bilocalize, make=make_gln, boost=GLNBoostOp.boost)
+    # alg = GlobalAlgebra(GLNBilocalOp.bilocalize, make=make_gln) # bilocal boost
     i_ = alg.i_  # keep for interactive
 
     # test_perm = alg.make([1, 3, 4, 2])
@@ -76,6 +76,15 @@ def main():
     # #     " + ...",
     # # )
     Q = lrc.Q
+    breakpoint()
+    lrcbl = LongRangeChain(chain, (3, -1))
+    lrcbl.ensure_order(4)
+    chain.Q(2)
+    lrcbs = LongRangeChain(chain, (3,))
+    lrcbs.ensure_order(4)
+    diff = lrcbl.Q(2) - lrcbs.Q(2)
+    for i in range(5):
+        print(len(lrc.truncate_order(diff, i)))
     breakpoint()
 
 

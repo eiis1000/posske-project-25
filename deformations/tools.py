@@ -1,3 +1,5 @@
+from itertools import chain
+
 from .config import enable_logging
 
 try:
@@ -9,7 +11,7 @@ except ImportError:
 def extend_linear(fn):
     return (
         lambda arg: fn(arg)
-        if not hasattr(arg, "__iter__")
+        if getattr(arg, "__iter__", None) is None
         else sum(coeff * arg.parent()(fn(elem)) for elem, coeff in arg)
     )
 
@@ -17,7 +19,7 @@ def extend_linear(fn):
 def extend_to_coeffs(fn):
     return (
         lambda arg: fn(arg)
-        if not hasattr(arg, "__iter__")
+        if getattr(arg, "__iter__", None) is None
         else sum(fn(coeff) * arg.parent()(elem) for elem, coeff in arg)
     )
 
@@ -31,14 +33,13 @@ def extend_bilinear(fn):
 def map_elements(input, fn, item_map):
     if type(input) is dict:
         input = input.items()
-    for k, v in input:
-        if hasattr(k, "is_zero") and k.is_zero():
+    for item in input:
+        mapped_k, mapped_v = item_map(*item)
+        if is_zero(mapped_v):
             continue
-        mapped_k, mapped_v = item_map(k, v)
         fn((mapped_k, mapped_v))
 
 
-@profile
 def _map_collect_elements_update_proto(kv, zero, output):
     k, v = kv
     tmp = output.get(k, zero)
@@ -57,6 +58,25 @@ def map_collect_elements(input, item_map, zero=0):
     return output
 
 
+@profile
+def sum_dicts(*dicts, zero=0):
+    chained = chain.from_iterable(d.items() for d in dicts)
+    return map_collect_elements(chained, lambda k, v: (k, v), zero=zero)
+
+
+def is_zero(input):
+    """
+    Returns True if the input is zero; if the input is a tuple, returns True if
+    ANY of the elements are zero, as we assume it will be used in a product.
+    """
+    if (iz := getattr(input, "is_zero", None)) is not None:
+        return iz()
+    elif getattr(input, "dtype", None) is not None:
+        # this means we're a numpy array
+        return False
+    return input == 0
+
+
 def compose(*f):
     ret = (lambda *x: compose(*f[:-1])(f[-1](*x))) if f else lambda x: x
     ret.__name__ = "(" + " o ".join(func_name(fn) for fn in f) + ")"
@@ -65,6 +85,7 @@ def compose(*f):
 
 
 def func_name(fn):
+    # we'll use hasattr because we don't care about speed
     if hasattr(fn, "__func__"):
         return func_name(fn.__func__)
     # elif hasattr(fn, "__qualname__"):

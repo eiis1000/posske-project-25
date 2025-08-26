@@ -19,10 +19,13 @@ def run_deformation_test(deform, max_order, max_q, skip_last_consistency=False):
     match deform:
         case (x,):
             deform_str = f"boost B[Q_{x}]"
+            boost = GLNBoostOp.boost
         case (x, -1):
             deform_str = f"bilocal-boost B[Q_{x}]"
+            boost = None
         case (x, y):
             deform_str = f"bilocal [Q_{x} | Q_{y}]"
+            boost = None  # could also use GLNBoostOp.boost if we wanted
         case _:
             deform_str = str(deform)
 
@@ -31,7 +34,7 @@ def run_deformation_test(deform, max_order, max_q, skip_last_consistency=False):
     start_time = time.perf_counter()
     print(f"Running test {test_name}...")
     try:
-        alg = GlobalAlgebra(GLNBoostOp.boost, GLNBilocalOp.bilocalize, make=make_gln)
+        alg = GlobalAlgebra(GLNBilocalOp.bilocalize, make=make_gln, boost=boost)
         hamiltonian = alg.make([1]) - alg.make([2, 1])
         chain = ShortRangeChain(hamiltonian)
         lrc = LongRangeChain(chain, deform)
@@ -43,7 +46,7 @@ def run_deformation_test(deform, max_order, max_q, skip_last_consistency=False):
             print(f"Computing order {ord}...", end="\r")
             lrc.ensure_order(ord)
             if skip_last_consistency and ord == max_order:
-                # this option exists for speed reasons. the check is slow
+                # this option exists for speed reasons as the check can be slow
                 continue
             print(f"Order {ord} consistency...", end="\r")
             consistent = lrc.algebra_consistency()
@@ -56,6 +59,7 @@ def run_deformation_test(deform, max_order, max_q, skip_last_consistency=False):
         print(f"Test {test_name} FAILED with an exception: {e}")
         traceback.print_exc()
     print(f"Elapsed: {time.perf_counter() - start_time:.2f}s\n")
+    return lrc
 
 
 def deformation_tests():
@@ -72,15 +76,18 @@ def deformation_tests():
         ((1, 3), 3, 4),
         ((1, 3), 4, 3),
         ((2, 3), 3, 2),
-        ((2, 4), 2, 2),
+        ((2, 4), 2, 2, True),
     ]
 
     speedy = True
     speedy = False
+    chains = []
     for test in tests:
         if speedy:
             test = (test[0], max(1, test[1] - 1), 3)  # , True)
-        run_deformation_test(*test)
+        tmp = run_deformation_test(*test)
+        chains.append((test[0], tmp))
+    # breakpoint()
 
     print("All deformation tests completed.")
     return True
@@ -92,7 +99,7 @@ def jacobi(a, b, c):
 
 def jacobi_tests():
     print("Running Jacobi tests...")
-    alg = GlobalAlgebra(GLNBoostOp.boost, GLNBilocalOp.bilocalize, make=make_gln)
+    alg = GlobalAlgebra(GLNBilocalOp.bilocalize, make=make_gln, boost=GLNBoostOp.boost)
     make = alg.make
     i = "precursor"
     assert alg.zero() == jacobi(
@@ -132,7 +139,7 @@ def jacobi_tests():
 
 def trivial_tests():
     print("Running trivial tests...")
-    alg = GlobalAlgebra(GLNBoostOp.boost, GLNBilocalOp.bilocalize, make=make_gln)
+    alg = GlobalAlgebra(GLNBilocalOp.bilocalize, make=make_gln, boost=GLNBoostOp.boost)
     h1 = alg.make([1])
     h21 = alg.make([2, 1])
     h312 = alg.make([3, 1, 2])

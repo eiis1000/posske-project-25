@@ -17,6 +17,7 @@ from ..tools import (
     extend_linear,
     map_collect_elements,
     map_elements,
+    sum_dicts,
 )
 
 try:
@@ -218,11 +219,11 @@ class GLNHomogOp(GlobalOp):
         left_perm, right_perm = left.data, right.data
         dragged, _ = drag_right_on_left(left_perm, right_perm, ring.one())
 
-        final_dict = map_collect_elements(
+        final = map_collect_elements(
             dragged, lambda k, v: (GLNHomogOp(k, alg=alg), v), ring.zero()
         )
 
-        final = alg(final_dict)
+        # final = alg(final)
         return final
 
     def vacuum_ev(self):
@@ -240,6 +241,15 @@ class GLNHomogOp(GlobalOp):
 
 
 class GLNBoostOp(GlobalOp):  # XXX THIS CLASS IS DEPRECATED
+    r"""
+    \begin{align}
+    \mc B[A]&\equiv \sum_a aA_a\\
+    &= \sum_{0<a\leq N-|A|} aA_a\\
+    \mc B[\leg A]&=\mc B[A]-[A]\\
+    \mc B[A \leg]&=\mc B[A]-[1]\ev{A}
+    {}\end{align}
+    """
+
     def __init__(self, perm, alg=None):
         # raise DeprecationWarning(
         #     """
@@ -286,7 +296,7 @@ class GLNBoostOp(GlobalOp):  # XXX THIS CLASS IS DEPRECATED
         perm = normalize_permutation(perm)
         perm_squeezed = perm[padding : len(perm) - padding] - padding
         if is_reduced_permutation(perm_squeezed):
-            return alg(GLNBoostOp(perm_squeezed))
+            return (GLNBoostOp(perm_squeezed), 1)
         else:
             perm_reduced, left_legs, right_legs = reduce_permutation(perm, padding)
             left_legs, right_legs = ring(left_legs), ring(right_legs)
@@ -298,9 +308,9 @@ class GLNBoostOp(GlobalOp):  # XXX THIS CLASS IS DEPRECATED
                     (right_legs - left_legs) / 2,
                 )
             accum_list = [
-                (GLNBoostOp(perm_reduced), 1),
-                (GLNHomogOp(perm_reduced), -left_legs),
-                (GLNHomogOp([1]), -right_legs),
+                (GLNBoostOp(perm_reduced, alg=alg), 1),
+                (GLNHomogOp(perm_reduced, alg=alg), -left_legs),
+                (GLNHomogOp([1], alg=alg), -right_legs),
             ]
             return accum_list
 
@@ -321,26 +331,23 @@ class GLNBoostOp(GlobalOp):  # XXX THIS CLASS IS DEPRECATED
             final_list.extend(
                 [(k, v * coeff) for (k, v) in GLNBoostOp.reduce(sg_el, padding, alg)]
             )
-        final_dict = map_collect_elements(final_list, lambda k, v: (k, v), ring.zero())
+        final = map_collect_elements(final_list, lambda k, v: (k, v), ring.zero())
 
-        return alg(final_dict) if final_dict else alg.zero()
+        # return alg(final) if final else alg.zero()
+        return final
 
 
 class GLNBilocalOp(GlobalOp):
     r"""
-    I really hate the paper's bilocal operator conventions, so I've rolled my
-    own, and I hope it ends up working. I've included some scratch work below.
-
-    Let's define $\antiwrap{A,B}\equiv\frac12\sum_a\Bqty{A_a,B_a}$ and
-    $[A/B]\equiv\frac12\sum_a\sum_{b>a}(A_aB_b+B_bA_a)$. 
-    $$
+    This is my own version of the bilocal operator; it's different
+    from the original paper's and less symmetric, but IMO easier to
+    work with. The definition is:
     \begin{align}
-    [A/B]+[B/A]&=\frac12\sum_a\sum_{b>a}(A_aB_b+B_bA_a)+\frac12\sum_b\sum_{a>b}(A_aB_b+B_bA_a)\\
-    &=\frac12\sum_a\sum_b\Bqty{A_a, B_b}-\frac12\sum_a\Bqty{A_a,B_a}\\
-    [A|B]&=^?[A/B]+\frac12\antiwrap{A,B}\\
-    [[A/B],C]&=\frac12\sum_a\sum_{b>a}\sum_c[\Bqty{A_a, B_b}, C_c]\\
-    &=\frac12\sum_a\sum_{b>a}\sum_c(\Bqty{A_a, [B_b, C_c]}+\Bqty{B_b, [A_a, C_c]})\\
-    $$
+    [A/B]&\equiv\frac12\sum_a\sum_{b>a}\Bqty{A_a, B_b}\\
+    \antiwrap{A,B}&\equiv\frac12\sum_a\Bqty{A_a,B_a}\\
+    [A|B]&\equiv [A/B]+\frac12\antiwrap{A, B}\\
+    {}\end{align}
+    See the documentation of `reduce_slashed` for the identifications.
     """
 
     def __init__(self, left, right, alg=None):
@@ -588,22 +595,18 @@ class GLNBilocalOp(GlobalOp):
                 lambda k, v: (k, v * quarter),
             )
 
-        accum_sl = alg(
-            map_collect_elements(
-                accum_slashed,
+        accum_sl = map_collect_elements(
+            accum_slashed,
+            lambda k, v: (k, v),
+            alg.base().zero(),
+        )
+
+        if incl_antiwrap_in_bilocal_bracket:
+            accum_aw = map_collect_elements(
+                accum_antiwrap,
                 lambda k, v: (k, v),
                 alg.base().zero(),
             )
-        )
-        if incl_antiwrap_in_bilocal_bracket:
-            accum_aw = alg(
-                map_collect_elements(
-                    accum_antiwrap,
-                    lambda k, v: (k, v),
-                    alg.base().zero(),
-                )
-            )
+            return sum_dicts(accum_sl, accum_aw, zero=alg.base().zero())
         else:
-            accum_aw = 0
-
-        return accum_sl + accum_aw
+            return accum_sl

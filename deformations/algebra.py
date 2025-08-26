@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from functools import total_ordering
+from operator import is_
 
 import numpy as np
 import sage.all as sa
@@ -9,7 +10,7 @@ from sage.parallel.decorate import parallel
 from sage.structure.indexed_generators import IndexedGenerators
 
 from .config import enable_logging, log_basis_bracket
-from .tools import compose, wrap_logging
+from .tools import compose, is_zero, map_collect_elements, wrap_logging
 
 sa.LieAlgebraWithGenerators = LieAlgebraWithGenerators
 sa.LieAlgebraElement = LieAlgebraElement
@@ -72,9 +73,13 @@ class GlobalOp(ABC):
         if cache_key in GlobalOp._bracket_cache:
             return GlobalOp._bracket_cache[cache_key]
         result = self.bracket_ordered(other)
+        if type(result) is dict:
+            neg_result = {k: -v for k, v in result.items()}
+        else:
+            neg_result = -result
         if cache:
-            GlobalOp._bracket_cache[cache_key] = result
-        return result
+            GlobalOp._bracket_cache[cache_key] = (result, neg_result)
+        return (result, neg_result)
 
     @staticmethod
     def update_bracket_cache(kv_list):
@@ -82,16 +87,15 @@ class GlobalOp(ABC):
             if cache_key not in GlobalOp._bracket_cache:
                 GlobalOp._bracket_cache[cache_key] = result
 
+    @profile
     def _bracket_(self, other, cache=True):
         assert isinstance(other, GlobalOp)
         if other.sort_order() < self.sort_order():
-            bkt = other.bracket_ordered_cached(self)
-            if type(bkt) is dict:
-                return {k: -v for k, v in bkt.items()}
-            else:
-                return -bkt
+            bkt = other.bracket_ordered_cached(self, cache=cache)
+            return bkt[1]
         else:
-            return self.bracket_ordered_cached(other)
+            bkt = self.bracket_ordered_cached(other, cache=cache)
+            return bkt[0]
 
     def bracket(self, other, cache=True):
         return self._bracket_(other, cache=cache)
@@ -103,9 +107,13 @@ class GlobalOp(ABC):
     def selfsort_tuple(self):
         pass
 
+    def set_alg(self, alg):
+        self.alg = alg
+        return self
+
 
 class GlobalAlgebra(sa.IndexedGenerators, sa.LieAlgebraWithGenerators):
-    def __init__(self, boost, bilocalize, make=None):
+    def __init__(self, bilocalize, boost=None, make=None):
         self.boost_term = boost
         self.boost = compose(self, boost) if boost is not None else self.bilocal_boost
         self.bilocalize = compose(self, bilocalize)
@@ -134,12 +142,12 @@ class GlobalAlgebra(sa.IndexedGenerators, sa.LieAlgebraWithGenerators):
         """Convert x into an element of this algebra"""
         if type(x) is dict:
             for k, v in tuple(x.items()):
-                if v == 0:
+                if is_zero(k) or is_zero(v):
                     del x[k]
         elif isinstance(x, GlobalOp):
             x.alg = self
             x = {x: self.ring(1)}
-        elif x == 0:
+        elif is_zero(x):
             return self.zero()
         else:
             raise TypeError(f"Cannot convert {type(x)} to an element of GlobalAlgebra.")
@@ -150,4 +158,23 @@ class GlobalAlgebra(sa.IndexedGenerators, sa.LieAlgebraWithGenerators):
         return (self.bilocalize(ones, Q) - self.bilocalize(Q, ones)) / 2
 
     class Element(sa.LieAlgebraElement):
+        def _bracket_(self, other):
+            alg = self.parent()
+            brackets_list = [
+                (k1, k2, (v1 * v2)) for (k1, v1) in self for (k2, v2) in other
+            ]
+            brackets_list = [
+                (GlobalOp.bracket(k1, k2), v) for k1, k2, v in brackets_list
+            ]
+            brackets_list = [
+                r for r in brackets_list if not is_zero(r[0]) and not is_zero(r[1])
+            ]
+            brackets_list = [
+                (k, v * v2) for b, v2 in brackets_list for k, v in b.items()
+            ]
+            brackets = map_collect_elements(
+                brackets_list, lambda k, v: (k, v), alg.ring.zero()
+            )
+            return alg(brackets)
+
         pass
