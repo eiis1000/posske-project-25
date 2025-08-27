@@ -177,12 +177,11 @@ def check_conversion_commutativity(left, right, alg, bracket):
             diff = conv_first - conv_second
             if not is_zero(diff):
                 print(f"Conversion non-commutativity found for {k1} and {k2}: {diff}")
-                # return False
+                return False
     return True
 
 
 def test_bilocal_boost_consistency():
-    # XXX deprecated until GLNBoostOp is fixed, and/or should be used to fix it
     print("Running bilocal boost consistency test...")
     alg = GlobalAlgebra(GLNBilocalOp.bilocalize, boost=GLNBoostOp.boost, make=make_gln)
     hamiltonian = alg.make([1]) - alg.make([2, 1])
@@ -208,7 +207,7 @@ def run_tests():
         trivial_tests,
         jacobi_tests,
         deformation_tests,
-        # test_bilocal_boost_consistency,
+        # test_bilocal_boost_consistency, # currently fails!
     ]
     for test in tests:
         try:

@@ -67,6 +67,9 @@ class DeformedChain(SpinChain):
                 return f
             case (k,) if type(k) is int:
                 self.ensure_filled(k)
+                # note that if alg was not initialized with a boost operation,
+                # this will use bilocal_boost instead and give the same result
+                # as passing (k, -1)
                 return lambda self: self.alg.boost(self.Q(k))
             case (k, -1) if type(k) is int:
                 self.ensure_filled(k)
