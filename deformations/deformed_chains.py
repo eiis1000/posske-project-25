@@ -1,5 +1,5 @@
-from deformations.short_chains import SpinChain
-from deformations.tools import extend_to_coeffs, map_collect_elements
+from .spin_chains import SpinChain
+from .tools import extend_to_coeffs, map_collect_elements
 
 try:
     from line_profiler import profile
@@ -108,36 +108,6 @@ class DeformedChain(SpinChain):
         else:
             return self.base_chain.algebra().sum(res)
 
-    def homogeneity(self, q=None):
-        if q is None:
-            for q in range(2, len(self.charge_tower)):
-                if not self.homogeneity(q):
-                    return False
-            return True
-        if q < 2:
-            return True
-        cur_charge = self.charge_tower[q]
-        consist_type = type([el for el, _ in self.alg.make([1])][0])
-        for el, _ in cur_charge:
-            if not isinstance(el, consist_type):
-                return False
-        return True
-
-    def algebra_consistency(self):
-        for q in range(2, len(self.charge_tower)):
-            for r in range(2, q):
-                bracket = self.bracket_to_order(self.Q(q), self.Q(r), self.order())
-                if not bracket.is_zero():
-                    bracket_str = str(bracket)
-                    if len(bracket_str) > 50:
-                        bracket_str = bracket_str[:50] + "..."
-                    print(
-                        f"Algebra inconsistency at order {self.order()}: "
-                        f"[Q{q}, Q{r}] = {bracket_str} != 0"
-                    )
-                    return False
-        return True
-
     def extract_orders(self, q):
         if q == 0:
             return [q]
@@ -185,7 +155,7 @@ class DeformedChain(SpinChain):
         res = str(terms[0])
         for k in range(1, len(terms)):
             if terms[k] != 0:
-                res += f" + {self.param}^{k}*({terms[k]})"
+                res += f" + {self.param}^{k}*({self.base_chain.format(terms[k])})"
         max_order = max(len(terms) - 1, order or 0)
         res += f" + O({self.param}^{max_order + 1})"
         return res
@@ -195,3 +165,6 @@ class DeformedChain(SpinChain):
 
     def algebra(self):
         return self.alg
+
+    def top_charge(self):
+        return len(self.charge_tower) - 1

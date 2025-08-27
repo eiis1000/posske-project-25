@@ -114,8 +114,6 @@ class GlobalOp(ABC):
 
 class GlobalAlgebra(sa.IndexedGenerators, sa.LieAlgebraWithGenerators):
     def __init__(self, bilocalize, boost=None, make=None, ring=None, i_=None):
-        # raw_ring = sa.QQbar
-        # self.i_ = self.raw_ring.gen()
         if ring is None:
             raw_ring = (sa.QQ(1) * sa.I).parent()
             self.i_ = raw_ring.gen()

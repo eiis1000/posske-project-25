@@ -13,7 +13,6 @@ from ..config import (
     use_numba,
 )
 from ..tools import (
-    AccumWrapper,
     extend_linear,
     map_collect_elements,
     map_elements,
@@ -60,8 +59,6 @@ def is_reduced_permutation(perm):
 def normalize_permutation(perm):
     """Ensure the permutation is a numpy array and 0-indexed."""
     if type(perm) is not np.ndarray:
-        if isinstance(perm, sa.SageObject):
-            perm = list(perm.tuple())
         assert type(perm) is list  # and all(isinstance(x, int) for x in perm)
         perm = np.array(perm, dtype=np.int32) - 1
     return perm
@@ -77,11 +74,9 @@ def reduce_permutation(perm, padding=0):
         offset += 1
     while not nontrivial_indices[end - 1]:
         end -= 1
-    offset, end = int(offset), int(end)  # avoids sage weirdness with np.int64
     reduced = perm[offset:end]
-    reduced = reduced.astype(np.int32)  # copies as well
+    reduced = reduced.astype(np.int32)  # implicit copy
     reduced -= offset
-    # assert is_valid_permutation(reduced)
     return reduced, offset - padding, len(perm) - end - padding
 
 
@@ -161,12 +156,6 @@ def drag_right_on_left(left_perm, right_perm, one=1):
 
 @njit(cache=True)
 def perm_compose_sided(left_perm, right_perm):
-    # assert is_valid_permutation(left_perm)
-    # assert is_valid_permutation(right_perm)
-    # sg = sa.SymmetricGroup(max(len(left_perm), len(right_perm)))
-    # left, right = sg((left_perm + 1).tolist()), sg((right_perm + 1).tolist())
-    # lr = list((left * right).tuple())
-    # rl = list((right * left).tuple())
     max_len = max(len(left_perm), len(right_perm))
     identity = np.arange(max_len, dtype=np.int32)
     left, right = identity.copy(), identity.copy()
@@ -193,7 +182,7 @@ class GLNHomogOp(GlobalOp):
     def __init__(self, perm, alg=None):
         if type(perm) is not np.ndarray:
             perm = normalize_permutation(perm)
-        # assert is_valid_permutation(perm)
+        # assert is_valid_permutation(perm) # for speed
         self.data, _, _ = reduce_permutation(perm)
         self.alg = alg
 
@@ -223,43 +212,31 @@ class GLNHomogOp(GlobalOp):
             dragged, lambda k, v: (GLNHomogOp(k, alg=alg), v), ring.zero()
         )
 
-        # final = alg(final)
         return final
 
     def vacuum_ev(self):
-        # Needed for the boost identification formulation of Eq. (3.20)
         return 1
-        # # originally I thought this was the sign, but no, according to
-        # # the footnote on page 13 it's just 1. old sign impl is below.
-        # even = True
-        # # brute-force n^2, could use merge sort if I really wanted to
-        # for i in range(len(self.data)):
-        #     for j in range(i + 1, len(self.data)):
-        #         if self.data[i] > self.data[j]:
-        #             even = not even
-        # return 1 if even else -1
 
 
-class GLNBoostOp(GlobalOp):  # XXX THIS CLASS IS DEPRECATED
+class GLNBoostOp(GlobalOp):  # XXX THIS CLASS IS DEPRECATED FOR CURRENTLY FAILING JACOBI
     r"""
     \begin{align}
     \mc B[A]&\equiv \sum_a aA_a\\
     &= \sum_{0<a\leq N-|A|} aA_a\\
-    \mc B[\leg A]&=\mc B[A]-[A]\\
-    \mc B[A \leg]&=\mc B[A]-[1]\ev{A}
+    \mc B[\leg A]&=\sum_{0<a\leq N-|\leg A|} a\leg A_a\\
+    &=\sum_{0<a\leq N-|A|-1} a A_{a+1}\\
+    &=\sum_{1<a\leq N-|A|} (a-1) A_{a}\\
+    &=\sum_{0<a\leq N-|A|} (a-1) A_{a}-(1-1)A_1\\
+    &=\sum_{0<a\leq N-|A|} a A_{a}-\sum_{0<a\leq N-|A|}  A_{a}\\
+    &=\mc B[A]-[A]\\
+    \mc B[A \leg]&=\sum_{0<a\leq N-|A\leg|} a A\leg _{a}\\
+    &=\sum_{0<a\leq N-|A|-1} a A_{a}\\
+    &=\sum_{0<a\leq N-|A|} a A_{a}-(N-|A|)A_{N-{|A|}}\\
+    &=\mc B[A]-[1]\ev A
     {}\end{align}
     """
 
     def __init__(self, perm, alg=None):
-        # raise DeprecationWarning(
-        #     """
-        #     Deprecated because there seem to exist some currently-unknown relations
-        #     between boost operators this causes inhomogeneities that are resolved by
-        #     using bilocal-boosts, which are more well-behaved. Figuring out these
-        #     relations would be an interesting topic of exploration, and would probably
-        #     only take a few days.
-        #     """
-        # )
         perm = normalize_permutation(perm)
         assert is_reduced_permutation(perm)
         self.data = perm
@@ -291,28 +268,22 @@ class GLNBoostOp(GlobalOp):  # XXX THIS CLASS IS DEPRECATED
 
     @staticmethod
     def reduce(perm, padding, alg):
-        # TODO check if it's possible to reduce boosts of disjoint permutations
         ring = alg.base()
         perm = normalize_permutation(perm)
-        perm_squeezed = perm[padding : len(perm) - padding] - padding
-        if is_reduced_permutation(perm_squeezed):
-            return [(GLNBoostOp(perm_squeezed), 1)]
-        else:
-            perm_reduced, left_legs, right_legs = reduce_permutation(perm, padding)
-            left_legs, right_legs = ring(left_legs), ring(right_legs)
-            if symmetric_boost_identification:
-                # the asymmetric identification is, IMO, much more intuitive,
-                # but this is the one that matches eq. (3.20) in the paper
-                left_legs, right_legs = (
-                    (left_legs - right_legs) / 2,
-                    (right_legs - left_legs) / 2,
-                )
-            accum_list = [
-                (GLNBoostOp(perm_reduced, alg=alg), 1),
-                (GLNHomogOp(perm_reduced, alg=alg), -left_legs),
-                (GLNHomogOp([1], alg=alg), -right_legs),
-            ]
-            return accum_list
+        perm_reduced, left_legs, right_legs = reduce_permutation(perm, padding)
+        left_legs, right_legs = ring(left_legs), ring(right_legs)
+        if symmetric_boost_identification:
+            # if matching eq. (3.20) in the paper is desired
+            left_legs, right_legs = (
+                (left_legs - right_legs) / 2,
+                (right_legs - left_legs) / 2,
+            )
+        accum_list = [
+            (GLNBoostOp(perm_reduced, alg=alg), 1),
+            (GLNHomogOp(perm_reduced, alg=alg), -left_legs),
+            (GLNHomogOp([1], alg=alg), -right_legs),
+        ]
+        return accum_list
 
     @staticmethod
     def bracket_boost_homog(left, right):
@@ -333,7 +304,6 @@ class GLNBoostOp(GlobalOp):  # XXX THIS CLASS IS DEPRECATED
             )
         final = map_collect_elements(final_list, lambda k, v: (k, v), ring.zero())
 
-        # return alg(final) if final else alg.zero()
         return final
 
 
@@ -402,21 +372,6 @@ class GLNBilocalOp(GlobalOp):
             for l, lc in left:
                 for r, rc in right:
                     assert type(l) is GLNHomogOp and type(r) is GLNHomogOp
-                    # lx = np.arange(left_len, dtype=int)
-                    # rx = np.arange(right_len, dtype=int)
-                    # if len(l.data):
-                    #     lx[: len(l.data)] = l.data
-                    # if len(r.data):
-                    #     rx[: len(r.data)] = r.data
-                    # reduced_slashed_list = GLNBilocalOp.reduce_slashed(
-                    #     lx, 0, rx, 0, alg
-                    # )[0]
-                    # reduced_slashed = map_collect_elements(
-                    #     reduced_slashed_list,
-                    #     lambda k, v: (k, v),
-                    #     alg.base().zero(),
-                    # )
-                    # accum += lc * rc * alg(reduced_slashed)
                     bl = GLNBilocalOp(l.data, r.data, alg=alg)
                     accum_list.append((bl, lc * rc))
             accum = map_collect_elements(
@@ -440,18 +395,18 @@ class GLNBilocalOp(GlobalOp):
         &=\frac12\sum_{0<a}\sum_{a+1<b\leq N-|B|} \Bqty{A_a,  B_{b}}\\
         &=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{A_a,  B_{b}}-\frac12\sum_{a}\Bqty{A_a,  B_{a+1}}\\
         &=[A/B]-\antiwrap{A, \leg B}\\
-        [A/B\leg ]&=\frac12\sum_{0<a}\sum_{a<b\leq N-|B\leg |} \Bqty{A_a, B_b\leg }\\
+        [A/B\leg]&=\frac12\sum_{0<a}\sum_{a<b\leq N-|B\leg|} \Bqty{A_a, B_b\leg}\\
         &=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|-1} \Bqty{A_a,  B_{b}}\\
         &=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{A_a,  B_{b}}-{ \frac12\sum_{a}\Bqty{A_a,  B_{N-|B|-1}} }\\
         &=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{A_a,  B_{b}}-{ \sum_a A_a }\\
         &=[A/B]-[A]\\
-        [\leg A/B]&=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{\leg A_a, B_b\leg }\\
+        [\leg A/B]&=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{\leg A_a, B_b\leg}\\
         &=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{A_{a+1},  B_{b}}\\
         &=\frac12\sum_{1<a}\sum_{a-1<b\leq N-|B|} \Bqty{A_{a},  B_{b}}\\
         &=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{A_a,  B_{b}}- \frac12\sum_{b}\Bqty{A_1,  B_{b}}+\frac12\sum_{a}\Bqty{A_{a},  B_{a}} \\
         &=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{A_a,  B_{b}}- \sum_{b}B_b+\frac12\sum_{a}\Bqty{A_{a},  B_{a}} \\
         &=[A/B]-[B]+\antiwrap{A,B}\\
-        [A\leg /B]&=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{ A_a\leg, B_b\leg }\\
+        [A\leg/B]&=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{ A_a\leg, B_b\leg}\\
         &=\frac12\sum_{0<a}\sum_{a<b\leq N-|B|} \Bqty{A_{a},  B_{b}}\\
         &=[A/B]\\
         {}\end{align}
@@ -465,10 +420,6 @@ class GLNBilocalOp(GlobalOp):
         primary = GLNBilocalOp(left_red, rght_red)
 
         accum = []
-        # accum = AccumWrapper(accum)
-        # accum += alg(primary)
-        # accum -= ll_legs * left_hom.vacuum_ev() * alg(rght_hom)
-        # accum -= rr_legs * rght_hom.vacuum_ev() * alg(left_hom)
         accum.append((primary, 1))
         if ll_legs != 0:
             accum.append((rght_hom, -ll_legs * left_hom.vacuum_ev()))
@@ -478,11 +429,7 @@ class GLNBilocalOp(GlobalOp):
         GLNBilocalOp.reduce_slashed_recurse(
             left_red, rght_red, ll_legs, rl_legs, accum, append_antiwrap
         )
-        # note that lr isn't used because I think it's only on boundary.
-
-        accum = accum._wrapped if type(accum) is AccumWrapper else accum
-
-        # accum = map_collect_elements(accum, lambda k, v: (alg(k), v), alg.base().zero())
+        # note that lr isn't used
 
         return accum, primary
 
@@ -490,32 +437,24 @@ class GLNBilocalOp(GlobalOp):
     @profile
     def reduce_slashed_recurse(l_red, r_red, ll_legs, rl_legs, accum, append_antiwrap):
         if ll_legs > 0:
-            # comms = perm_compose_sided(l_red, r_red)
-            # accum += GLNBilocalOp.antiwrap(comms, alg)
             l, r = pair_pad(l_red, ll_legs - 1, r_red, rl_legs)
             append_antiwrap(l, r, 1, accum.append)
             return GLNBilocalOp.reduce_slashed_recurse(
                 l_red, r_red, ll_legs - 1, rl_legs, accum, append_antiwrap
             )
         elif ll_legs < 0:
-            # comms = perm_compose_sided(l_red, pad_permutation(r_red, -ll_legs))
-            # accum -= GLNBilocalOp.antiwrap(comms, alg)
             l, r = pair_pad(l_red, ll_legs, r_red, rl_legs)
             append_antiwrap(l, r, -1, accum.append)
             return GLNBilocalOp.reduce_slashed_recurse(
                 l_red, r_red, ll_legs + 1, rl_legs, accum, append_antiwrap
             )
         elif rl_legs > 0:
-            # comms = perm_compose_sided(l_red, pad_permutation(r_red, rl_legs))
-            # accum -= GLNBilocalOp.antiwrap(comms, alg)
             l, r = pair_pad(l_red, 0, r_red, rl_legs)
             append_antiwrap(l, r, -1, accum.append)
             return GLNBilocalOp.reduce_slashed_recurse(
                 l_red, r_red, ll_legs, rl_legs - 1, accum, append_antiwrap
             )
         elif rl_legs < 0:
-            # comms = perm_compose_sided(l_red, r_red)
-            # accum += GLNBilocalOp.antiwrap(comms, alg)
             l, r = pair_pad(l_red, 0, r_red, rl_legs + 1)
             append_antiwrap(l, r, 1, accum.append)
             return GLNBilocalOp.reduce_slashed_recurse(
@@ -558,12 +497,9 @@ class GLNBilocalOp(GlobalOp):
             reduced, primary = GLNBilocalOp.reduce_slashed(
                 bileft, 0, br_tg_perm, br_tg_pad, append_antiwrap
             )
-            # accum_slashed += coeff * reduced
             accum_slashed.extend([(k, v * coeff) for (k, v) in reduced])
 
             red_left, red_rght = primary.data
-            # red_comms = perm_compose_sided(red_left, red_rght)
-            # accum_antiwrap -= coeff * GLNBilocalOp.antiwrap(red_comms, alg) / 2
             append_antiwrap(red_left, red_rght, -coeff / 2, accum_antiwrap.append)
 
         bl_tg_drag, bl_tg_pad = drag_right_on_left(bileft, target, ring.one())
@@ -572,18 +508,12 @@ class GLNBilocalOp(GlobalOp):
             reduced, primary = GLNBilocalOp.reduce_slashed(
                 bl_tg_perm, bl_tg_pad, birght, 0, append_antiwrap
             )
-            # accum_slashed += coeff * reduced
             accum_slashed.extend([(k, v * coeff) for (k, v) in reduced])
 
             red_left, red_rght = primary.data
-            # red_comms = perm_compose_sided(red_left, red_rght)
-            # accum_antiwrap -= coeff * GLNBilocalOp.antiwrap(red_comms, alg) / 2
             append_antiwrap(red_left, red_rght, -coeff / 2, accum_antiwrap.append)
 
         bl_br_comms = perm_compose_sided(bileft, birght)
-        # accum_antiwrap += (
-        #     GLNBilocalOp.antiwrap(bl_br_comms, alg).bracket(alg(right)) / 2
-        # )
         quarter = ring.one() / 4
         for ix in [0, 1]:
             cur = GLNHomogOp(bl_br_comms[ix], alg=alg)

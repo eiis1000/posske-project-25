@@ -14,6 +14,42 @@ class SpinChain(ABC):
     def algebra(self):
         pass
 
+    @abstractmethod
+    def format(self, q):
+        pass
+
+    @abstractmethod
+    def top_charge(self):
+        pass
+
+    def homogeneity(self, q=None):
+        if q is None:
+            for q in range(2, len(self.charge_tower)):
+                if not self.homogeneity(q):
+                    return False
+            return True
+        cur_charge = self.Q(q)
+        consist_type = type([el for el, _ in self.algebra().make([1])][0])
+        for el, _ in cur_charge:
+            if type(el) is not consist_type:
+                return False
+        return True
+
+    def algebra_consistency(self):
+        for q in range(2, self.top_charge() + 1):
+            for r in range(2, q):
+                bracket = self.bracket(self.Q(q), self.Q(r))
+                if not bracket.is_zero():
+                    bracket_str = str(bracket)
+                    if len(bracket_str) > 50:
+                        bracket_str = bracket_str[:50] + "..."
+                    print(
+                        f"Algebra inconsistency at order {self.order()}: "
+                        f"[Q{q}, Q{r}] = {bracket_str} != 0"
+                    )
+                    return False
+        return True
+
 
 class BaseChain(SpinChain):
     def __init__(self, hamiltonian, logging=False):
@@ -51,6 +87,12 @@ class BaseChain(SpinChain):
 
     def algebra(self):
         return self.alg
+
+    def format(self, q):
+        return str(q)
+
+    def top_charge(self):
+        return len(self.charge_tower) - 1
 
     def first_order_boost_deformation_reduced(self, r, k):
         raise DeprecationWarning()
